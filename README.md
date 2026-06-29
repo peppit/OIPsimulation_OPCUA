@@ -1,58 +1,109 @@
 # OPC UA Simulation Server
 
-This project provides a small OPC UA simulation server for a simple factory setup with:
+This project provides a small OPC UA simulation server for a simple factory setup with MQTT-based control.
 
-- Robot tags
-- Conveyor belt tags
-- Laser sensor tag
+The server is implemented in `server.py` using `asyncua` and `aiomqtt`.
 
-The server is implemented in `server.py` using `asyncua`.
+## Current Workflow
 
-## What The Server Does
+The server now works in two directions:
 
-When running, the server:
+1. It listens for MQTT operation messages from the AAS.
+2. It writes the requested values into OPC UA nodes.
+3. It also publishes back MQTT status updates for running state, speed, and box detection.
 
-- Starts an OPC UA endpoint at `opc.tcp://localhost:4840`
-- Creates a namespace: `http://openindustryproject.github.io/robot0`
-- Creates objects under `FactoryFloor`:
-  - `Robot`
-  - `ConveyorBelt`
+### MQTT Input Topics
+
+The server subscribes to:
+
+`simulation/+/operations/+`
+
+Expected operation topics:
+
+- `simulation/Station_01/operations/conveyorRunning`
+- `simulation/Station_01/operations/conveyorSpeed`
+
+Example payloads:
+
+```json
+true
+```
+
+```json
+{"value": true}
+```
+
+```json
+1.0
+```
+
+```json
+{"value": 1.0}
+```
+
+### MQTT Output Topics
+
+The server publishes status on:
+
+- `simulation/<StationId>/isRunning`
+- `simulation/<StationId>/currentSpeed`
+- `simulation/<StationId>/boxDetected`
+
+### OPC UA Structure
+
+The server starts an OPC UA endpoint at:
+
+`opc.tcp://localhost:4840`
+
+It creates a namespace:
+
+`http://openindustryproject.github.io/robot0`
+
+It creates objects under `FactoryFloor`:
+
+- `Robot`
+- `ConveyorBelt`
 
 ### Exposed Variables
 
 Robot:
 
-- `Command` (String)
-- `Execute` (Boolean)
-- `Done` (Boolean)
-- `GripperState` (Boolean)
+- `Command`
+- `Execute`
+- `Done`
+- `GripperState`
 
 ConveyorBelt:
 
-- `Running` (Boolean)
-- `Speed` (Float)
-- `LaserSensor` (Boolean)
+- `Running`
+- `Speed`
+- `LaserSensor`
+- `PositionX`
+- `PositionY`
+- `PositionZ`
 
-### Current Runtime Logic
+## Current Runtime Behavior
 
-In the current script logic:
+The server has a monitoring loop for the laser sensor.
 
-- If `LaserSensor` is `True`, the server sets:
-  - `Running = False`
-  - `Speed = 0.0`
-- Then it waits 5 seconds.
+When the laser sensor value is between `0.01` and `0.5`:
 
-Note: In the current version there is no `else` branch that restores conveyor movement automatically after sensor becomes `False`.
+- `Running` is written to `False`
+- `Speed` is written to `0.0`
+- a `boxDetected` MQTT message is published
+
+When no box is present, the server keeps publishing box state changes and continues listening for MQTT operations.
 
 ## Requirements
 
 - Python 3.10+
 - `asyncua`
+- `aiomqtt`
 
-Install dependency:
+Install dependencies:
 
 ```powershell
-pip install asyncua
+pip install asyncua aiomqtt
 ```
 
 ## How To Run
@@ -65,20 +116,30 @@ python server.py
 
 You should see logs including:
 
-- Server started successfully
-- Endpoint: `opc.tcp://localhost:4840`
+- Initialized and mapped nodes for Station_01
+- Unified OPC UA + MQTT Gateway Environment Online
+- MQTT operation listener subscribed to `simulation/+/operations/+`
 
 Stop the server with `Ctrl+C`.
 
+## How To Use With AAS
+
+1. Publish an operation message to the MQTT broker.
+2. The server receives the message.
+3. The server writes the value to the matching OPC UA node.
+4. The server publishes back the current MQTT state.
+
 ## OPC UA Connection
 
-For local connection (same machine), use:
+For local connection, use:
 
-- `opc.tcp://localhost:4840`
+`opc.tcp://localhost:4840`
 
-## For Connection in Open Indusrty Project simulation
+## Open Industry Project Setup
 
-- connect to opc.tcp://localhost:4840 endpoint
-- Enable Comms
-- Add tags (copy and paste nodeIds to wanted tags in simulated machines)
-- for more detailed instructions on connecting check: https://github.com/Open-Industry-Project/Open-Industry-Project#communications
+1. Connect to `opc.tcp://localhost:4840`.
+2. Enable Comms.
+3. Add the node IDs to the desired tags.
+4. See the Open Industry Project communications guide for more details:
+
+https://github.com/Open-Industry-Project/Open-Industry-Project#communications

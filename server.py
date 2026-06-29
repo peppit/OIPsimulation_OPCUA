@@ -24,10 +24,13 @@ class ProductionLineController:
         
         # State tracking flags persistent to THIS specific station instance
         self.waiting_for_pickup = False
+        self.target_running = True
+        self.target_speed = 1.0
 
         # State caches to enforce Report-by-Exception (no duplicate spam)
         self.last_running_state = None
         self.last_speed_state = None
+        self.last_box_state = None
         
         # Node placeholders
         self.cmd_node = None
@@ -37,6 +40,71 @@ class ProductionLineController:
         self.conveyor_running = None
         self.conveyor_speed = None
         self.sensor_node = None
+
+    async def _read_payload(self, payload_bytes):
+        payload_text = payload_bytes.decode("utf-8").strip()
+        if not payload_text:
+            return None
+        try:
+            return json.loads(payload_text)
+        except json.JSONDecodeError:
+            return payload_text
+
+    def _coerce_bool(self, value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "on", "yes"}:
+                return True
+            if normalized in {"false", "0", "off", "no"}:
+                return False
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return None
+
+    def _coerce_float(self, value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    async def handle_operation_message(self, operation_name, payload_bytes):
+        payload = await self._read_payload(payload_bytes)
+
+        if operation_name == "conveyorRunning":
+            if isinstance(payload, dict):
+                value = payload.get("value", payload.get("running"))
+            else:
+                value = payload
+            running = self._coerce_bool(value)
+            if running is None:
+                logging.warning("[%s] Invalid conveyorRunning payload: %s", self.station_id, payload)
+                return
+            self.target_running = running
+            await self.conveyor_running.write_value(running)
+            await self.publish_conveyor_running(running)
+            logging.info("[%s] Applied operation conveyorRunning=%s", self.station_id, running)
+
+        elif operation_name == "conveyorSpeed":
+            if isinstance(payload, dict):
+                value = payload.get("value", payload.get("speed"))
+            else:
+                value = payload
+            speed = self._coerce_float(value)
+            if speed is None:
+                logging.warning("[%s] Invalid conveyorSpeed payload: %s", self.station_id, payload)
+                return
+            if speed < 0.0:
+                logging.warning("[%s] Ignoring negative conveyorSpeed: %s", self.station_id, speed)
+                return
+            self.target_speed = speed
+            await self.conveyor_speed.write_value(ua.Variant(float(speed), ua.VariantType.Float))
+            await self.publish_conveyor_speed(float(speed))
+            logging.info("[%s] Applied operation conveyorSpeed=%s", self.station_id, speed)
+
+        else:
+            logging.warning("[%s] Unknown operation '%s' with payload: %s", self.station_id, operation_name, payload)
 
     async def initialize_nodes(self):
         """Creates unique OPC UA folders and variables for this specific station."""
@@ -75,18 +143,26 @@ class ProductionLineController:
         print(f"[INFO] Initialized and mapped nodes for {self.station_id}")
 
 
-    async def publish_mqtt(self, running, speed):
-
-        changed_running = running != self.last_running_state
-        changed_speed = speed != self.last_speed_state
-
-        if changed_running:
+    async def publish_conveyor_running(self, running):
+        if running != self.last_running_state:
             topic_running = f"simulation/{self.station_id}/isRunning"
             await self.mqtt.publish(topic_running, json.dumps({"isRunning": running}))
             print("PUB", topic_running, running)
             self.last_running_state = running
 
-        if changed_speed:
+    async def publish_box_detected(self, box_detected, distance):
+        if box_detected != self.last_box_state:
+            topic_box = f"simulation/{self.station_id}/boxDetected"
+            payload = {
+                "boxDetected": box_detected,
+                "distance": float(distance),
+            }
+            await self.mqtt.publish(topic_box, json.dumps(payload))
+            print("PUB", topic_box, payload)
+            self.last_box_state = box_detected
+
+    async def publish_conveyor_speed(self, speed):
+        if speed != self.last_speed_state:
             topic_speed = f"simulation/{self.station_id}/currentSpeed"
             await self.mqtt.publish(topic_speed, json.dumps({"currentSpeed": speed}))
             print("PUB", topic_speed, speed)
@@ -101,80 +177,48 @@ class ProductionLineController:
 
             # Read raw distance value from OIP for this station
             current_distance = await self.sensor_node.get_value()
-            current_speed = await self.conveyor_speed.get_value()
-            is_running = await self.conveyor_running.get_value()
             # Apply your exact trigger calculation rule
             box_is_present = (current_distance > 0.01) and (current_distance < 0.5)
+            await self.publish_box_detected(box_is_present, current_distance)
+
             if box_is_present:
-                print(f"[{self.station_id}] Box detected! Stopping conveyor...")
+                logging.info("[%s] Box detected, stopping conveyor", self.station_id)
                 await self.conveyor_running.write_value(False)
                 await self.conveyor_speed.write_value(ua.Variant(0.0, ua.VariantType.Float))
-                await self.publish_mqtt(False, 0.0)
-                self.waiting_for_pickup = True
-                await asyncio.sleep(0.5) # Friction stop buffer
+                await self.publish_conveyor_running(False)
+                await self.publish_conveyor_speed(0.0)
 
-            if box_is_present and self.waiting_for_pickup:
-                
-                # 1. Command: Move to Pick Position (Command 2)
-                print(f"[{self.station_id}] Moving to pick position (Cmd 2)...")
-                await self.cmd_node.write_value(ua.Variant(2, ua.VariantType.Int16))
-                await self.exec_node.write_value(True)
-                await asyncio.sleep(2.0)
+            
 
-                # 2. Actuate Gripper
-                print(f"[{self.station_id}] Arrived! Actuating Gripper...")
-                await self.exec_node.write_value(False) 
-                await self.gripper_node.write_value(True)
-                await asyncio.sleep(1.0)
-                
-                # 3. Command: Move to Place Position (Command 3)
-                print(f"[{self.station_id}] Moving to place position (Cmd 3)...")
-                await self.cmd_node.write_value(ua.Variant(3, ua.VariantType.Int16))
-                await self.exec_node.write_value(True)
-                await asyncio.sleep(1.5) 
-                
-                # 4. Transition Pathing Sequence (Cmd 4 & Cmd 5)
-                await self.exec_node.write_value(False)
-                await asyncio.sleep(0.5) 
-                await self.cmd_node.write_value(ua.Variant(4, ua.VariantType.Int16))
-                await self.exec_node.write_value(True)
-                await asyncio.sleep(2.0) 
-                
-                await self.exec_node.write_value(False)
-                await asyncio.sleep(0.5)
-                await self.cmd_node.write_value(ua.Variant(5, ua.VariantType.Int16))
-                await self.exec_node.write_value(True)
-                await asyncio.sleep(2.0)
-                
-                # 5. Release Object
-                print(f"[{self.station_id}] Releasing Gripper...")
-                await self.gripper_node.write_value(False)
-                await asyncio.sleep(1.5) # Drop buffer
-                
-                # 6. Return Pathing Sequence (Cmd 4 Return)
-                await self.exec_node.write_value(False)
-                await asyncio.sleep(0.5)
-                await self.cmd_node.write_value(ua.Variant(4, ua.VariantType.Int16))
-                await self.exec_node.write_value(True)
-                await asyncio.sleep(1.0)
-                
-                # 7. Complete Execution
-                await self.exec_node.write_value(False)
-                await self.done_node.write_value(True)
-                print(f"[{self.station_id}] Sequence Complete.")
 
-                # Lock the sequence out from immediately re-triggering on the same box
-                self.waiting_for_pickup = False
+async def mqtt_operation_listener(mqtt_client, controllers_by_station):
+    operation_topic = "simulation/+/operations/+"
+    await mqtt_client.subscribe(operation_topic)
+    logging.info("MQTT operation listener subscribed to %s", operation_topic)
 
-            elif not box_is_present:
-                # Keep speed aligned to the actual running state.
-                await self.conveyor_running.write_value(True)
-                await self.conveyor_speed.write_value(ua.Variant(1.0, ua.VariantType.Float))
+    async def process_messages(messages):
+        async for message in messages:
+            logging.info("MQTT RX topic=%s payload=%s", message.topic, message.payload)
+            topic_parts = str(message.topic).split("/")
+            if len(topic_parts) != 4:
+                logging.warning("Ignoring malformed topic: %s", message.topic)
+                continue
+            _, station_id, _, operation_name = topic_parts
+            controller = controllers_by_station.get(station_id)
+            if controller is None:
+                logging.warning("MQTT operation received for unknown station: %s", station_id)
+                continue
+            await controller.handle_operation_message(operation_name, message.payload)
 
-                current_running = await self.conveyor_running.get_value()
-                current_speed = await self.conveyor_speed.get_value()
-                await self.publish_mqtt(current_running, current_speed)
-                self.waiting_for_pickup = True
+    messages_source = mqtt_client.messages
+    if callable(messages_source):
+        messages_source = messages_source()
+
+    if hasattr(messages_source, "__aenter__"):
+        async with messages_source as messages:
+            await process_messages(messages)
+    else:
+        await process_messages(messages_source)
 
 async def main():
     server = Server()
@@ -192,6 +236,7 @@ async def main():
 
     station_ids = ["Station_01"]
     controllers = []
+    controllers_by_station = {}
 
     try:
         async with MqttClient("localhost") as mqtt_client, server:
@@ -199,11 +244,12 @@ async def main():
                 controller = ProductionLineController(s_id, idx, factory_object, mqtt_client)
                 await controller.initialize_nodes()
                 controllers.append(controller)
+                controllers_by_station[s_id] = controller
 
             print(f"\n[INFO] Unified OPC UA + MQTT Gateway Environment Online!")
-
-            # Start the cyclical logic for each production line controller
-            tasks = [controller.run_cyclical_logic() for controller in controllers]
+            tasks = [mqtt_operation_listener(mqtt_client, controllers_by_station)]
+            tasks.extend(controller.run_cyclical_logic() for controller in controllers)
+            print(f"[INFO] All production line controllers are running. Press Ctrl+C to stop the server.")
             await asyncio.gather(*tasks)
     except MqttError as exc:
         logging.error(
