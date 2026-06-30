@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 import sys
+from typing import Any, Awaitable, Callable, Dict, List
 from asyncua import Server, ua
 from aiomqtt import Client as MqttClient, MqttError
 
@@ -10,8 +11,240 @@ logging.getLogger("asyncua.server.address_space").setLevel(logging.WARNING)
 logging.getLogger("asyncua.server.standard_address_space").setLevel(logging.WARNING)
 
 
+OperationHandler = Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]
 
-class ProductionLineController:
+
+class StationOperationDispatcher:
+    """
+    Config-driven operation dispatcher for station controllers.
+
+    This class is designed to be mixed into the station controller class.
+    Required members on self:
+    - station_id
+    - cmd_node, exec_node, gripper_node, conveyor_running, conveyor_speed
+    - target_running, target_speed
+    - publish_conveyor_running(), publish_conveyor_speed(), publish_robot_moving()
+    - _coerce_bool(), _coerce_float()
+    - operation_lock
+    """
+
+    def _build_operation_handlers(self) -> Dict[str, OperationHandler]:
+        return {
+            "conveyorrunning": self._op_conveyor_running,
+            "conveyorspeed": self._op_conveyor_speed,
+            "movebox": self._op_move_box,
+        }
+
+    def _build_operation_aliases(self) -> Dict[str, str]:
+        return {
+            "running": "conveyorRunning",
+            "speed": "conveyorSpeed",
+            "move_box": "moveBox",
+            "movebox": "moveBox",
+            "moveBox": "moveBox",
+        }
+
+    def _build_robot_sequences(self) -> Dict[str, List[Dict[str, Any]]]:
+        # Keep station-agnostic defaults here. Override per station if needed.
+        return {
+            "moveBox": [
+                {"action": "set_done", "value": False},
+                {"action": "set_cmd_exec", "cmd": 2, "exec": True},
+                {"action": "sleep", "seconds": 2.0},
+                {"action": "set_exec", "value": False},
+                {"action": "set_gripper", "value": True},
+                {"action": "sleep", "seconds": 1.0},
+                {"action": "set_cmd_exec", "cmd": 3, "exec": True},
+                {"action": "sleep", "seconds": 1.5},
+                {"action": "set_exec", "value": False},
+                {"action": "sleep", "seconds": 0.5},
+                {"action": "set_cmd_exec", "cmd": 4, "exec": True},
+                {"action": "sleep", "seconds": 2.0},
+                {"action": "set_exec", "value": False},
+                {"action": "sleep", "seconds": 0.5},
+                {"action": "set_cmd_exec", "cmd": 5, "exec": True},
+                {"action": "sleep", "seconds": 2.0},
+                {"action": "set_exec", "value": False},
+                {"action": "set_gripper", "value": False},
+                {"action": "sleep", "seconds": 1.5},
+                {"action": "set_exec", "value": False},
+                {"action": "sleep", "seconds": 0.5},
+                {"action": "set_cmd_exec", "cmd": 4, "exec": True},
+                {"action": "sleep", "seconds": 1.0},
+                {"action": "set_exec", "value": False},
+                {"action": "set_done", "value": True},
+            ]
+        }
+
+    async def dispatch_operation(self, operation_name: str, payload: Any) -> None:
+        operation_name, payload_envelope = self._normalize_operation_message(operation_name, payload)
+
+        station_from_payload = payload_envelope.get("stationId")
+        if station_from_payload and station_from_payload != self.station_id:
+            logging.warning(
+                "[%s] Ignoring operation for different station '%s': %s",
+                self.station_id,
+                station_from_payload,
+                payload_envelope,
+            )
+            return
+
+        key = operation_name.strip().lower()
+        handler = self.operation_handlers.get(key)
+
+        if handler is None:
+            logging.warning(
+                "[%s] Unknown operation '%s' with payload: %s",
+                self.station_id,
+                operation_name,
+                payload_envelope,
+            )
+            return
+
+        try:
+            await handler(payload_envelope, payload_envelope.get("params", {}))
+        except Exception:
+            logging.exception("[%s] Operation '%s' failed", self.station_id, operation_name)
+
+    def _normalize_operation_message(self, operation_name: str, payload: Any) -> Any:
+        # New contract from operation-service:
+        # {
+        #   "requestId": "...",
+        #   "stationId": "Station_01",
+        #   "operation": "moveBox",
+        #   "params": {...}
+        # }
+        if isinstance(payload, dict):
+            op_from_payload = payload.get("operation")
+            params = payload.get("params")
+            if isinstance(op_from_payload, str) and isinstance(params, dict):
+                canonical_op = self._canonical_operation_name(op_from_payload)
+                envelope = {
+                    "requestId": payload.get("requestId"),
+                    "stationId": payload.get("stationId", self.station_id),
+                    "operation": canonical_op,
+                    "params": params,
+                    "raw": payload,
+                }
+                return canonical_op, envelope
+
+            # Legacy single-operation payloads.
+            canonical_op = self._canonical_operation_name(operation_name)
+            envelope = {
+                "requestId": payload.get("requestId"),
+                "stationId": self.station_id,
+                "operation": canonical_op,
+                "params": payload,
+                "raw": payload,
+            }
+            return canonical_op, envelope
+
+        canonical_op = self._canonical_operation_name(operation_name)
+        return canonical_op, {
+            "requestId": None,
+            "stationId": self.station_id,
+            "operation": canonical_op,
+            "params": {"value": payload},
+            "raw": payload,
+        }
+
+    def _canonical_operation_name(self, name: str) -> str:
+        aliases = self.operation_aliases
+        return aliases.get(name, aliases.get(name.lower(), name))
+
+    async def _op_conveyor_running(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+        value = params.get("value", params.get("running"))
+        running = self._coerce_bool(value)
+        if running is None:
+            raise ValueError(f"Invalid conveyorRunning payload: {params}")
+
+        async with self.operation_lock:
+            self.target_running = running
+            await self.conveyor_running.write_value(running)
+            await self.publish_conveyor_running(running)
+        logging.info("[%s] Applied operation conveyorRunning=%s", self.station_id, running)
+
+    async def _op_conveyor_speed(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+        value = params.get("value", params.get("speed"))
+        speed = self._coerce_float(value)
+        if speed is None:
+            raise ValueError(f"Invalid conveyorSpeed payload: {params}")
+        if speed < 0.0:
+            raise ValueError(f"Negative conveyorSpeed is invalid: {speed}")
+
+        async with self.operation_lock:
+            self.target_speed = speed
+            await self.conveyor_speed.write_value(ua.Variant(float(speed), ua.VariantType.Float))
+            await self.publish_conveyor_speed(float(speed))
+        logging.info("[%s] Applied operation conveyorSpeed=%s", self.station_id, speed)
+
+    async def _op_move_box(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+        conveyor = params.get("Conveyor1")
+        pallet = params.get("Pallet1")
+        if not conveyor or not pallet:
+            raise ValueError(f"moveBox requires Conveyor1 and Pallet1, got: {params}")
+
+        logging.info(
+            "[%s] Executing moveBox conveyor=%s pallet=%s requestId=%s",
+            self.station_id,
+            conveyor,
+            pallet,
+            envelope.get("requestId"),
+        )
+
+        sequence = self.robot_sequences.get("moveBox", [])
+        async with self.operation_lock:
+            await self._execute_robot_sequence(sequence)
+
+            # 2. Sequence complete! Automatically restart the conveyor to bring the next box
+            logging.info("[%s] Robot sequence complete. Restarting conveyor.", self.station_id)
+            
+            # Use your saved target states to bring it back to its original configured speed
+            await self.conveyor_running.write_value(self.target_running)
+            await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
+            
+            # Broadcast the updated status changes out to the MQTT network
+            await self.publish_conveyor_running(self.target_running)
+            await self.publish_conveyor_speed(self.target_speed)
+        
+
+    async def _execute_robot_sequence(self, sequence: List[Dict[str, Any]]) -> None:
+        await self.publish_robot_moving(True)
+        try:
+            for step in sequence:
+                action = step.get("action")
+
+                if action == "set_cmd_exec":
+                    cmd = int(step["cmd"])
+                    exec_value = bool(step.get("exec", True))
+                    await self.cmd_node.write_value(ua.Variant(cmd, ua.VariantType.Int16))
+                    await self.exec_node.write_value(exec_value)
+                    continue
+
+                if action == "set_exec":
+                    await self.exec_node.write_value(bool(step["value"]))
+                    continue
+
+                if action == "set_gripper":
+                    await self.gripper_node.write_value(bool(step["value"]))
+                    continue
+
+                if action == "set_done":
+                    await self.done_node.write_value(bool(step["value"]))
+                    continue
+
+                if action == "sleep":
+                    await asyncio.sleep(float(step["seconds"]))
+                    continue
+
+                raise ValueError(f"Unsupported sequence action: {action}")
+        finally:
+            await self.exec_node.write_value(False)
+            await self.publish_robot_moving(False)
+
+
+
+class ProductionLineController(StationOperationDispatcher):
     """
     Blueprint class to manage the independent state machine and 
     OPC UA data nodes for an individual production station.
@@ -21,6 +254,7 @@ class ProductionLineController:
         self.ns = namespace_idx
         self.folder = idx_folder
         self.mqtt = mqtt_client
+        self.operation_lock = asyncio.Lock()
         
         # State tracking flags persistent to THIS specific station instance
         self.waiting_for_pickup = False
@@ -31,6 +265,7 @@ class ProductionLineController:
         self.last_running_state = None
         self.last_speed_state = None
         self.last_box_state = None
+        self.last_executing_state = None
         
         # Node placeholders
         self.cmd_node = None
@@ -40,6 +275,11 @@ class ProductionLineController:
         self.conveyor_running = None
         self.conveyor_speed = None
         self.sensor_node = None
+
+        # Cached dispatcher config
+        self.operation_handlers = self._build_operation_handlers()
+        self.operation_aliases = self._build_operation_aliases()
+        self.robot_sequences = self._build_robot_sequences()
 
     async def _read_payload(self, payload_bytes):
         payload_text = payload_bytes.decode("utf-8").strip()
@@ -71,40 +311,7 @@ class ProductionLineController:
 
     async def handle_operation_message(self, operation_name, payload_bytes):
         payload = await self._read_payload(payload_bytes)
-
-        if operation_name == "conveyorRunning":
-            if isinstance(payload, dict):
-                value = payload.get("value", payload.get("running"))
-            else:
-                value = payload
-            running = self._coerce_bool(value)
-            if running is None:
-                logging.warning("[%s] Invalid conveyorRunning payload: %s", self.station_id, payload)
-                return
-            self.target_running = running
-            await self.conveyor_running.write_value(running)
-            await self.publish_conveyor_running(running)
-            logging.info("[%s] Applied operation conveyorRunning=%s", self.station_id, running)
-
-        elif operation_name == "conveyorSpeed":
-            if isinstance(payload, dict):
-                value = payload.get("value", payload.get("speed"))
-            else:
-                value = payload
-            speed = self._coerce_float(value)
-            if speed is None:
-                logging.warning("[%s] Invalid conveyorSpeed payload: %s", self.station_id, payload)
-                return
-            if speed < 0.0:
-                logging.warning("[%s] Ignoring negative conveyorSpeed: %s", self.station_id, speed)
-                return
-            self.target_speed = speed
-            await self.conveyor_speed.write_value(ua.Variant(float(speed), ua.VariantType.Float))
-            await self.publish_conveyor_speed(float(speed))
-            logging.info("[%s] Applied operation conveyorSpeed=%s", self.station_id, speed)
-
-        else:
-            logging.warning("[%s] Unknown operation '%s' with payload: %s", self.station_id, operation_name, payload)
+        await self.dispatch_operation(operation_name, payload)
 
     async def initialize_nodes(self):
         """Creates unique OPC UA folders and variables for this specific station."""
@@ -167,6 +374,13 @@ class ProductionLineController:
             await self.mqtt.publish(topic_speed, json.dumps({"currentSpeed": speed}))
             print("PUB", topic_speed, speed)
             self.last_speed_state = speed
+    
+    async def publish_robot_moving(self, moving):
+        if moving != self.last_executing_state:
+            topic_moving = f"simulation/{self.station_id}/isMoving"
+            await self.mqtt.publish(topic_moving, json.dumps({"isMoving": moving}))
+            print("PUB", topic_moving, moving)
+            self.last_executing_state = moving
 
     async def run_cyclical_logic(self):
         """Your exact pick-and-place logic sequence, running independently for this line."""
@@ -175,35 +389,71 @@ class ProductionLineController:
         while True:
             await asyncio.sleep(0.05)
 
-            # Read raw distance value from OIP for this station
             current_distance = await self.sensor_node.get_value()
-            # Apply your exact trigger calculation rule
             box_is_present = (current_distance > 0.01) and (current_distance < 0.5)
             await self.publish_box_detected(box_is_present, current_distance)
 
-            if box_is_present:
-                logging.info("[%s] Box detected, stopping conveyor", self.station_id)
-                await self.conveyor_running.write_value(False)
-                await self.conveyor_speed.write_value(ua.Variant(0.0, ua.VariantType.Float))
-                await self.publish_conveyor_running(False)
-                await self.publish_conveyor_speed(0.0)
+            # Safety Auto-Stop: If a box arrives and the conveyor is running, stop it.
+            if box_is_present and not self.operation_lock.locked():
+                current_running = await self.conveyor_running.get_value()
+                if current_running:
+                    logging.info("[%s] Box detected automatically! Halting conveyor for pickup.", self.station_id)
+                    await self.conveyor_running.write_value(False)
+                    await self.conveyor_speed.write_value(ua.Variant(0.0, ua.VariantType.Float))
+                    await self.publish_conveyor_running(False)
+                    await self.publish_conveyor_speed(0.0)
+            
+            if not box_is_present and not self.operation_lock.locked():
+                await self.publish_robot_moving(False)
 
             
 
-
 async def mqtt_operation_listener(mqtt_client, controllers_by_station):
-    operation_topic = "simulation/+/operations/+"
-    await mqtt_client.subscribe(operation_topic)
-    logging.info("MQTT operation listener subscribed to %s", operation_topic)
+    operation_topics = [
+        "simulation/+/operations/+",
+        "simulation/robot/+",
+    ]
+    for operation_topic in operation_topics:
+        await mqtt_client.subscribe(operation_topic)
+        logging.info("MQTT operation listener subscribed to %s", operation_topic)
+
+    def _try_extract_station_id_from_payload(payload_bytes):
+        try:
+            payload_text = payload_bytes.decode("utf-8").strip()
+            if not payload_text:
+                return None
+            payload = json.loads(payload_text)
+            if isinstance(payload, dict):
+                station_id = payload.get("stationId")
+                if isinstance(station_id, str) and station_id:
+                    return station_id
+        except Exception:
+            return None
+        return None
+
+    def _resolve_target(topic_parts, payload_bytes):
+        # Supported topic shapes:
+        # 1) simulation/{stationId}/operations/{operation}
+        # 2) simulation/robot/{operation} with stationId in payload
+        if len(topic_parts) == 4 and topic_parts[0] == "simulation" and topic_parts[2] == "operations":
+            return topic_parts[1], topic_parts[3]
+
+        if len(topic_parts) == 3 and topic_parts[0] == "simulation" and topic_parts[1] == "robot":
+            station_id = _try_extract_station_id_from_payload(payload_bytes)
+            if station_id is None and len(controllers_by_station) == 1:
+                station_id = next(iter(controllers_by_station.keys()))
+            return station_id, topic_parts[2]
+
+        return None, None
 
     async def process_messages(messages):
         async for message in messages:
             logging.info("MQTT RX topic=%s payload=%s", message.topic, message.payload)
             topic_parts = str(message.topic).split("/")
-            if len(topic_parts) != 4:
+            station_id, operation_name = _resolve_target(topic_parts, message.payload)
+            if station_id is None or operation_name is None:
                 logging.warning("Ignoring malformed topic: %s", message.topic)
                 continue
-            _, station_id, _, operation_name = topic_parts
             controller = controllers_by_station.get(station_id)
             if controller is None:
                 logging.warning("MQTT operation received for unknown station: %s", station_id)
