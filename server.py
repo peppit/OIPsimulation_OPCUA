@@ -332,10 +332,7 @@ class ProductionLineController(StationOperationDispatcher):
         self.conveyor_running = await conveyor_object.add_variable(self.ns, "Running", False, varianttype=ua.VariantType.Boolean)
         self.conveyor_speed = await conveyor_object.add_variable(self.ns, "Speed", 0.0, varianttype=ua.VariantType.Float)
         self.sensor_node = await conveyor_object.add_variable(self.ns, "LaserSensor", 0.0, varianttype=ua.VariantType.Float)
-        self.position_x_node = await conveyor_object.add_variable(self.ns, "PositionX", 0.0, varianttype=ua.VariantType.Float)
-        self.position_y_node = await conveyor_object.add_variable(self.ns, "PositionY", 0.0, varianttype=ua.VariantType.Float)
-        self.position_z_node = await conveyor_object.add_variable(self.ns, "PositionZ", 0.0, varianttype=ua.VariantType.Float)
-
+        
         # Make all nodes writable by the simulation
         await self.cmd_node.set_writable()
         await self.exec_node.set_writable()
@@ -344,9 +341,6 @@ class ProductionLineController(StationOperationDispatcher):
         await self.conveyor_running.set_writable()
         await self.conveyor_speed.set_writable()
         await self.sensor_node.set_writable()
-        await self.position_x_node.set_writable()
-        await self.position_y_node.set_writable()
-        await self.position_z_node.set_writable()
         print(f"[INFO] Initialized and mapped nodes for {self.station_id}")
 
 
@@ -357,15 +351,11 @@ class ProductionLineController(StationOperationDispatcher):
             print("PUB", topic_running, running)
             self.last_running_state = running
 
-    async def publish_box_detected(self, box_detected, distance):
+    async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
             topic_box = f"simulation/{self.station_id}/boxDetected"
-            payload = {
-                "boxDetected": box_detected,
-                "distance": float(distance),
-            }
-            await self.mqtt.publish(topic_box, json.dumps(payload))
-            print("PUB", topic_box, payload)
+            await self.mqtt.publish(topic_box, json.dumps({"boxDetected": box_detected}))
+            print("PUB", topic_box, box_detected)
             self.last_box_state = box_detected
 
     async def publish_conveyor_speed(self, speed):
@@ -390,8 +380,15 @@ class ProductionLineController(StationOperationDispatcher):
             await asyncio.sleep(0.05)
 
             current_distance = await self.sensor_node.get_value()
+
+            # Normalize "no box" distance to 0.0 for consistent downstream mapping.
+            if current_distance >= 0.5:
+                if current_distance != 0.0:
+                    await self.sensor_node.write_value(ua.Variant(0.0, ua.VariantType.Float))
+                current_distance = 0.0
+
             box_is_present = (current_distance > 0.01) and (current_distance < 0.5)
-            await self.publish_box_detected(box_is_present, current_distance)
+            await self.publish_box_detected(box_is_present)
 
             # Safety Auto-Stop: If a box arrives and the conveyor is running, stop it.
             if box_is_present and not self.operation_lock.locked():
