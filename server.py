@@ -33,6 +33,7 @@ class StationOperationDispatcher:
             "conveyorrunning": self._op_conveyor_running,
             "conveyorspeed": self._op_conveyor_speed,
             "movebox": self._op_move_box,
+            "movetohome": self._op_move_to_home,
         }
 
     def _build_operation_aliases(self) -> Dict[str, str]:
@@ -49,28 +50,34 @@ class StationOperationDispatcher:
         return {
             "moveBox": [
                 {"action": "set_done", "value": False},
-                {"action": "set_cmd_exec", "cmd": 2, "exec": True},
+                {"action": "set_cmd_exec", "cmd": 1, "exec": True},
                 {"action": "sleep", "seconds": 2.0},
                 {"action": "set_exec", "value": False},
                 {"action": "set_gripper", "value": True},
                 {"action": "sleep", "seconds": 1.0},
-                {"action": "set_cmd_exec", "cmd": 3, "exec": True},
+                {"action": "set_cmd_exec", "cmd": 2, "exec": True},
                 {"action": "sleep", "seconds": 1.5},
                 {"action": "set_exec", "value": False},
                 {"action": "sleep", "seconds": 0.5},
-                {"action": "set_cmd_exec", "cmd": 4, "exec": True},
+                {"action": "set_cmd_exec", "cmd": 3, "exec": True},
                 {"action": "sleep", "seconds": 2.0},
                 {"action": "set_exec", "value": False},
                 {"action": "sleep", "seconds": 0.5},
-                {"action": "set_cmd_exec", "cmd": 5, "exec": True},
+                {"action": "set_cmd_exec", "cmd": 4, "exec": True},
                 {"action": "sleep", "seconds": 2.0},
                 {"action": "set_exec", "value": False},
                 {"action": "set_gripper", "value": False},
                 {"action": "sleep", "seconds": 1.5},
+                {"action": "set_cmd_exec", "cmd": 3, "exec": True},
+                {"action": "sleep", "seconds": 2.0},
                 {"action": "set_exec", "value": False},
                 {"action": "sleep", "seconds": 0.5},
-                {"action": "set_cmd_exec", "cmd": 4, "exec": True},
-                {"action": "sleep", "seconds": 1.0},
+                {"action": "set_done", "value": True},
+            ],
+            "moveToHome": [
+                {"action": "set_done", "value": False},
+                {"action": "set_cmd_exec", "cmd": 0, "exec": True},
+                {"action": "sleep", "seconds": 2.0},
                 {"action": "set_exec", "value": False},
                 {"action": "set_done", "value": True},
             ]
@@ -193,6 +200,27 @@ class StationOperationDispatcher:
         )
 
         sequence = self.robot_sequences.get("moveBox", [])
+        async with self.operation_lock:
+            await self._execute_robot_sequence(sequence)
+
+            # 2. Sequence complete! Automatically restart the conveyor to bring the next box
+            logging.info("[%s] Robot sequence complete. Restarting conveyor.", self.station_id)
+            
+            # Use your saved target states to bring it back to its original configured speed
+            await self.conveyor_running.write_value(self.target_running)
+            await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
+            
+            # Broadcast the updated status changes out to the MQTT network
+            await self.publish_conveyor_running(self.target_running)
+            await self.publish_conveyor_speed(self.target_speed)
+    
+    async def _op_move_to_home(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+        value = params.get("value", params.get("move"))
+        move = self._coerce_bool(value)
+        if move is None:
+            raise ValueError(f"Invalid moveToHome payload: {params}")
+        
+        sequence = self.robot_sequences.get("moveToHome", [])
         async with self.operation_lock:
             await self._execute_robot_sequence(sequence)
 
@@ -329,8 +357,8 @@ class ProductionLineController(StationOperationDispatcher):
         self.gripper_node = await robot_object.add_variable(self.ns, "GripperState", False, varianttype=ua.VariantType.Boolean)
 
         # Conveyor Belt Nodes
-        self.conveyor_running = await conveyor_object.add_variable(self.ns, "Running", False, varianttype=ua.VariantType.Boolean)
-        self.conveyor_speed = await conveyor_object.add_variable(self.ns, "Speed", 0.0, varianttype=ua.VariantType.Float)
+        self.conveyor_running = await conveyor_object.add_variable(self.ns, "Running", True, varianttype=ua.VariantType.Boolean)
+        self.conveyor_speed = await conveyor_object.add_variable(self.ns, "Speed", 1.0, varianttype=ua.VariantType.Float)
         self.sensor_node = await conveyor_object.add_variable(self.ns, "LaserSensor", 0.0, varianttype=ua.VariantType.Float)
         
         # Make all nodes writable by the simulation
