@@ -73,6 +73,7 @@ class StationOperationDispatcher:
                 {"action": "set_exec", "value": False},
                 {"action": "sleep", "seconds": 0.5},
                 {"action": "set_done", "value": True},
+
             ],
             "moveToHome": [
                 {"action": "set_done", "value": False},
@@ -209,10 +210,10 @@ class StationOperationDispatcher:
             # Use your saved target states to bring it back to its original configured speed
             await self.conveyor_running.write_value(self.target_running)
             await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
-            
-            # Broadcast the updated status changes out to the MQTT network
             await self.publish_conveyor_running(self.target_running)
             await self.publish_conveyor_speed(self.target_speed)
+
+        await self.publish_robot_moving(False)
     
     async def _op_move_to_home(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
         value = params.get("value", params.get("move"))
@@ -226,14 +227,13 @@ class StationOperationDispatcher:
 
             # 2. Sequence complete! Automatically restart the conveyor to bring the next box
             logging.info("[%s] Robot sequence complete. Restarting conveyor.", self.station_id)
-            
-            # Use your saved target states to bring it back to its original configured speed
+
             await self.conveyor_running.write_value(self.target_running)
             await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
-            
-            # Broadcast the updated status changes out to the MQTT network
             await self.publish_conveyor_running(self.target_running)
             await self.publish_conveyor_speed(self.target_speed)
+            
+        await self.publish_robot_moving(False)
         
 
     async def _execute_robot_sequence(self, sequence: List[Dict[str, Any]]) -> None:
@@ -268,6 +268,9 @@ class StationOperationDispatcher:
                 raise ValueError(f"Unsupported sequence action: {action}")
         finally:
             await self.exec_node.write_value(False)
+            if hasattr(self, 'done_node') and self.done_node:
+                await self.done_node.write_value(False)
+
             await self.publish_robot_moving(False)
 
 
@@ -428,9 +431,8 @@ class ProductionLineController(StationOperationDispatcher):
                     await self.publish_conveyor_running(False)
                     await self.publish_conveyor_speed(0.0)
             
-            if not box_is_present and not self.operation_lock.locked():
-                await self.publish_robot_moving(False)
-
+            is_currently_busy = self.operation_lock.locked()
+            await self.publish_robot_moving(is_currently_busy)
             
 
 async def mqtt_operation_listener(mqtt_client, controllers_by_station):
