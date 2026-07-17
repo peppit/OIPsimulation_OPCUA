@@ -1,7 +1,11 @@
 import asyncio
+import csv
 import logging
 import json
+import os
 import sys
+import time
+from collections import deque
 from typing import Any, Awaitable, Callable, Dict, List
 from asyncua import Server, ua
 from aiomqtt import Client as MqttClient, MqttError
@@ -200,6 +204,9 @@ class StationOperationDispatcher:
             envelope.get("requestId"),
         )
 
+        # t4: when moveBox is invoked in this server.
+        await self._capture_t4_and_log_pair()
+
         sequence = self.robot_sequences.get("moveBox", [])
         async with self.operation_lock:
             await self._execute_robot_sequence(sequence)
@@ -307,10 +314,138 @@ class ProductionLineController(StationOperationDispatcher):
         self.conveyor_speed = None
         self.sensor_node = None
 
+        # Timing log state: keep max 5 t0->t4 samples per server run.
+        self.max_latency_samples_per_run =150
+        self.logged_latency_samples = 0
+        self.pending_t0 = None
+        self.run_min_latency = None
+        self.run_max_latency = None
+        self.global_min_latency = None
+        self.global_max_latency = None
+        self.log_lock = asyncio.Lock()
+        self.log_csv_path = os.path.join(os.path.dirname(__file__), "OIP_server_logs.csv")
+        self._ensure_log_file_header()
+        self._load_global_min_max_from_csv()
+
         # Cached dispatcher config
         self.operation_handlers = self._build_operation_handlers()
         self.operation_aliases = self._build_operation_aliases()
         self.robot_sequences = self._build_robot_sequences()
+
+    def _ensure_log_file_header(self):
+        expected_header = [
+            "station_id",
+            "sample_in_run",
+            "t0_unix",
+            "t4_unix",
+            "end_to_end_latency_s",
+            "run_min_latency_s",
+            "run_max_latency_s",
+            "global_min_latency_s",
+            "global_max_latency_s",
+        ]
+
+        needs_header = (not os.path.exists(self.log_csv_path)) or os.path.getsize(self.log_csv_path) == 0
+        if needs_header:
+            with open(self.log_csv_path, "a", newline="", encoding="utf-8") as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow(expected_header)
+            return
+
+        with open(self.log_csv_path, "r", newline="", encoding="utf-8") as csv_file:
+            reader = csv.reader(csv_file)
+            rows = list(reader)
+
+        if not rows:
+            with open(self.log_csv_path, "w", newline="", encoding="utf-8") as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow(expected_header)
+            return
+
+        current_header = rows[0]
+        if current_header == expected_header:
+            return
+
+        logging.warning(
+            "Unexpected CSV header in %s. Expected %s, got %s.",
+            self.log_csv_path,
+            expected_header,
+            current_header
+        )
+
+    def _load_global_min_max_from_csv(self):
+        if (not os.path.exists(self.log_csv_path)) or os.path.getsize(self.log_csv_path) == 0:
+            return
+
+        with open(self.log_csv_path, "r", newline="", encoding="utf-8") as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                latency_text = row.get("end_to_end_latency_s")
+                if latency_text is None or latency_text == "":
+                    continue
+                try:
+                    latency = float(latency_text)
+                except ValueError:
+                    continue
+
+                if self.global_min_latency is None or latency < self.global_min_latency:
+                    self.global_min_latency = latency
+                if self.global_max_latency is None or latency > self.global_max_latency:
+                    self.global_max_latency = latency
+
+    async def _capture_t0_if_needed(self):
+        if self.logged_latency_samples >= self.max_latency_samples_per_run:
+            return
+        self.pending_t0 = time.time()
+
+    async def _capture_t4_and_log_pair(self):
+        async with self.log_lock:
+            if self.logged_latency_samples >= self.max_latency_samples_per_run:
+                return
+            if self.pending_t0 is None:
+                logging.warning("[%s] No pending t0 available when capturing t4.", self.station_id)
+                return
+
+            t0 = self.pending_t0
+            self.pending_t0 = None
+            t4 = time.time()
+            end_to_end_latency = t4 - t0
+            sample_index = self.logged_latency_samples + 1
+
+            if self.run_min_latency is None or end_to_end_latency < self.run_min_latency:
+                self.run_min_latency = end_to_end_latency
+            if self.run_max_latency is None or end_to_end_latency > self.run_max_latency:
+                self.run_max_latency = end_to_end_latency
+            if self.global_min_latency is None or end_to_end_latency < self.global_min_latency:
+                self.global_min_latency = end_to_end_latency
+            if self.global_max_latency is None or end_to_end_latency > self.global_max_latency:
+                self.global_max_latency = end_to_end_latency
+
+            with open(self.log_csv_path, "a", newline="", encoding="utf-8") as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow([
+                    self.station_id,
+                    sample_index,
+                    f"{t0:.6f}",
+                    f"{t4:.6f}",
+                    f"{end_to_end_latency:.6f}",
+                    f"{self.run_min_latency:.6f}",
+                    f"{self.run_max_latency:.6f}",
+                    f"{self.global_min_latency:.6f}",
+                    f"{self.global_max_latency:.6f}",
+                ])
+
+            self.logged_latency_samples = sample_index
+            logging.info(
+                "[%s] Logged sample %d/%d to %s (t0=%.6f, t4=%.6f, delta=%.6fs)",
+                self.station_id,
+                self.logged_latency_samples,
+                self.max_latency_samples_per_run,
+                self.log_csv_path,
+                t0,
+                t4,
+                end_to_end_latency,
+            )
 
     async def _read_payload(self, payload_bytes):
         payload_text = payload_bytes.decode("utf-8").strip()
@@ -421,6 +556,13 @@ class ProductionLineController(StationOperationDispatcher):
             box_is_present = (current_distance > 0.01) and (current_distance < 0.5)
             await self.publish_box_detected(box_is_present)
 
+            # t0: rising edge of box detection event from sensor.
+            if box_is_present and not self.waiting_for_pickup:
+                self.waiting_for_pickup = True
+                await self._capture_t0_if_needed()
+            elif not box_is_present and self.waiting_for_pickup:
+                self.waiting_for_pickup = False
+
             # Safety Auto-Stop: If a box arrives and the conveyor is running, stop it.
             if box_is_present and not self.operation_lock.locked():
                 current_running = await self.conveyor_running.get_value()
@@ -511,7 +653,7 @@ async def main():
     objects_folder = server.nodes.objects
     factory_object = await objects_folder.add_object(idx, "FactoryFloor")
 
-    station_ids = ["Station_01"]
+    station_ids = ["Station_01", "Station_02"]
     controllers = []
     controllers_by_station = {}
 
