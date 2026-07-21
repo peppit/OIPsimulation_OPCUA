@@ -17,7 +17,6 @@ logging.getLogger("asyncua.server.standard_address_space").setLevel(logging.WARN
 
 OperationHandler = Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]
 
-
 class StationOperationDispatcher:
     """
     Config-driven operation dispatcher for station controllers.
@@ -509,6 +508,14 @@ class ProductionLineController(StationOperationDispatcher):
         await self.sensor_node.set_writable()
         print(f"[INFO] Initialized and mapped nodes for {self.station_id}")
 
+    async def publish_initial_state(self):
+        """Publish initial conveyor state once so external systems receive startup values."""
+        running = await self.conveyor_running.get_value()
+        speed = await self.conveyor_speed.get_value()
+
+        await self.publish_conveyor_running(bool(running))
+        await self.publish_conveyor_speed(float(speed))
+
 
     async def publish_conveyor_running(self, running):
         if running != self.last_running_state:
@@ -520,6 +527,12 @@ class ProductionLineController(StationOperationDispatcher):
     async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
             topic_box = f"simulation/{self.station_id}/boxDetected"
+            logging.info(
+            "[%s] MQTT PUBLISH topic=%s value=%s",
+            self.station_id,
+            topic_box,
+            box_detected,
+            )
             await self.mqtt.publish(topic_box, json.dumps({"boxDetected": box_detected}))
             print("PUB", topic_box, box_detected)
             self.last_box_state = box_detected
@@ -586,6 +599,11 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station):
         await mqtt_client.subscribe(operation_topic)
         logging.info("MQTT operation listener subscribed to %s", operation_topic)
 
+    controllers_by_station_ci = {
+        station_id.lower(): controller
+        for station_id, controller in controllers_by_station.items()
+    }
+
     def _try_extract_station_id_from_payload(payload_bytes):
         try:
             payload_text = payload_bytes.decode("utf-8").strip()
@@ -616,6 +634,15 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station):
         return None, None
 
     async def process_messages(messages):
+        pending_tasks = set()
+
+        def _on_task_done(task: asyncio.Task) -> None:
+            pending_tasks.discard(task)
+            try:
+                task.result()
+            except Exception:
+                logging.exception("Station operation task failed")
+
         async for message in messages:
             logging.info("MQTT RX topic=%s payload=%s", message.topic, message.payload)
             topic_parts = str(message.topic).split("/")
@@ -624,11 +651,19 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station):
                 logging.warning("Ignoring malformed topic: %s", message.topic)
                 continue
             controller = controllers_by_station.get(station_id)
+            if controller is None and isinstance(station_id, str):
+                controller = controllers_by_station_ci.get(station_id.lower())
             if controller is None:
                 logging.warning("MQTT operation received for unknown station: %s", station_id)
                 continue
-            await controller.handle_operation_message(operation_name, message.payload)
+            
+            task = asyncio.create_task(controller.handle_operation_message(operation_name, message.payload))
+            pending_tasks.add(task)
+            task.add_done_callback(_on_task_done)
 
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+            
     messages_source = mqtt_client.messages
     if callable(messages_source):
         messages_source = messages_source()
@@ -662,6 +697,7 @@ async def main():
             for s_id in station_ids:
                 controller = ProductionLineController(s_id, idx, factory_object, mqtt_client)
                 await controller.initialize_nodes()
+                await controller.publish_initial_state()
                 controllers.append(controller)
                 controllers_by_station[s_id] = controller
 
