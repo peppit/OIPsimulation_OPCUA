@@ -1,6 +1,7 @@
 __pycache__/
 .vscode/
 OIP_server_logs.csv
+sensor_logs.log
 .venv/
 venv/
 env/

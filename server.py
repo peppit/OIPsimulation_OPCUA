@@ -15,6 +15,53 @@ logging.getLogger("asyncua.server.address_space").setLevel(logging.WARNING)
 logging.getLogger("asyncua.server.standard_address_space").setLevel(logging.WARNING)
 
 
+def _build_pub_debug_logger() -> logging.Logger:
+    logger = logging.getLogger("simulation.pub")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    log_path = os.path.join(os.path.dirname(__file__), "PUB_messages.log")
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    logger.addHandler(handler)
+    return logger
+
+
+def _build_latency_pub_debug_logger() -> logging.Logger:
+    logger = logging.getLogger("simulation.pub.latency")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    log_path = os.path.join(os.path.dirname(__file__), "PUB_messages_latency.log")
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    logger.addHandler(handler)
+    return logger
+
+
+def _build_sensor_debug_logger() -> logging.Logger:
+    logger = logging.getLogger("simulation.sensor")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    log_path = os.path.join(os.path.dirname(__file__), "sensor_logs.log")
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    logger.addHandler(handler)
+    return logger
+
+
+PUB_DEBUG_LOGGER = _build_pub_debug_logger()
+LATENCY_PUB_DEBUG_LOGGER = _build_latency_pub_debug_logger()
+SENSOR_DEBUG_LOGGER = _build_sensor_debug_logger()
+
+
 OperationHandler = Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]
 
 class StationOperationDispatcher:
@@ -557,8 +604,6 @@ class ProductionLineController(StationOperationDispatcher):
         
         while True:
             await asyncio.sleep(0.05)
-
-            current_distance = await self.sensor_node.get_value()
 
             # Normalize "no box" distance to 0.0 for consistent downstream mapping.
             if current_distance >= 0.5:
