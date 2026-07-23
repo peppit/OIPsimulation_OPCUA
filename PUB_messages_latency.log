@@ -1,218 +1,350 @@
-2026-07-22 12:00:24,551 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:00:24,551 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:00:24,551 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:00:24,552 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:01:06,805 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:01:06,806 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:01:07,173 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:01:10,431 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:01:44,039 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:01:44,039 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:01:44,040 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:01:44,040 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:02:00,268 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:02:00,292 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:02:00,310 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:02:00,361 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:02:03,535 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:02:03,583 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:02:05,635 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:02:05,686 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:02:13,801 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:02:13,873 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:04:21,116 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:04:21,117 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:04:21,117 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:04:21,118 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:04:50,595 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:04:50,596 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:04:50,596 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:04:50,597 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:10:26,470 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:10:26,471 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:10:26,471 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:10:26,472 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:12:43,925 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:12:43,926 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:12:44,200 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:12:44,252 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:12:47,451 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:12:47,502 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:12:48,982 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:12:48,982 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:12:49,034 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:12:49,034 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:12:49,548 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:12:49,599 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:12:57,710 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:12:57,762 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:13:03,988 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:04,016 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:13:07,259 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:08,691 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:08,741 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:08,792 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:08,843 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:08,894 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:08,945 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:13,996 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:14,019 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:13:17,263 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:17,526 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:13:18,597 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:18,649 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:19,162 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:19,213 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:19,264 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:19,315 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:23,949 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:23,970 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:13:27,216 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:27,529 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:13:28,900 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:28,952 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:29,002 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:29,054 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:37,480 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:13:43,954 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:43,955 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:43,978 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:13:47,262 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:48,943 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:48,994 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:49,045 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:49,096 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:13:49,147 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:13:49,198 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:22:17,635 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:22:17,636 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:22:17,636 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:22:17,637 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:22:48,244 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:22:48,245 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:22:48,526 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:22:51,772 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:22:53,146 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:22:53,198 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:22:53,710 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:22:53,762 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:22:53,813 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:22:53,864 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:23:02,035 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:24:01,959 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:01,959 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:01,960 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:24:01,960 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:24:07,736 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:24:07,737 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:24:07,769 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:24:07,783 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:24:11,048 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:11,048 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:21,281 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:24:21,296 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:24:27,790 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:24:27,813 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:24:31,053 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:37,782 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:24:37,807 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:24:41,048 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:41,322 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:24:47,775 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:24:47,804 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:24:51,092 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:24:51,317 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:25:01,314 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:25:07,780 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:25:07,780 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:25:07,802 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:25:07,821 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:25:11,042 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:25:11,093 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:25:21,312 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:25:21,330 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:25:27,775 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:25:27,800 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:25:31,039 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:25:37,772 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:25:37,793 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:25:41,042 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:25:41,309 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:25:47,781 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:25:47,802 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:25:51,048 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:25:51,297 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:26:01,315 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:26:07,776 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:26:07,790 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:26:07,797 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:26:07,813 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:26:11,039 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:26:11,100 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:26:21,309 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:26:21,323 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:26:27,791 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:26:27,818 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:26:31,054 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:26:37,763 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:26:37,783 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:26:41,028 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:26:41,322 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:26:47,772 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:26:47,792 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:26:51,035 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:26:51,293 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:27:01,299 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:29:14,389 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:29:14,389 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:29:14,390 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:29:14,390 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:29:50,772 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:29:50,773 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:29:51,119 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:29:51,176 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:29:54,349 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:29:54,400 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:29:56,134 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:29:56,186 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:04,631 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:30:04,686 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:30:10,771 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:10,799 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:30:14,045 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:16,144 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:16,196 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:20,782 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:20,805 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:30:24,046 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:24,307 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:30:25,482 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:25,533 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:25,685 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:25,737 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:30,730 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:30,755 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":true}
-2026-07-22 12:30:34,317 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:30:35,423 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:37,521 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:37,574 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:37,625 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:37,677 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:38,188 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:38,240 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:38,291 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:38,343 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:44,269 [Station_01] topic=simulation/Station_01/isMoving payload={"isMoving":false}
-2026-07-22 12:30:50,746 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:50,746 [Station_01] topic=simulation/Station_01/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:50,771 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:30:54,011 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:55,499 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:55,550 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:30:55,601 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:30:55,652 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:31:04,282 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
-2026-07-22 12:33:15,370 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":true}
-2026-07-22 12:33:15,399 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":true}
-2026-07-22 12:33:18,645 [Station_02] topic=simulation/Station_02/boxDetected payload={"boxDetected":false}
-2026-07-22 12:33:28,904 [Station_02] topic=simulation/Station_02/isMoving payload={"isMoving":false}
+2026-07-23 12:09:23,596 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:09:23,596 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:09:23,597 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:09:23,597 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:09:49,373 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:09:49,373 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:09:49,667 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:09:49,725 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:09:52,933 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:09:52,985 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:10:03,177 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:10:03,231 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:10:09,392 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:10:09,438 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:10:12,697 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:10:19,401 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:10:19,449 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:10:22,657 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:10:22,949 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:10:29,374 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:10:29,421 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:10:32,673 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:10:32,963 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:10:42,932 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:10:42,934 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:10:42,936 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:10:49,399 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:10:49,400 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:10:49,448 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:10:49,449 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:10:52,702 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:10:52,702 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:11:02,958 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:11:02,958 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:11:09,378 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:11:09,427 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:11:12,685 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:11:19,376 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:11:19,424 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:11:22,677 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:11:22,941 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:11:29,402 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:11:29,450 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:11:32,659 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:11:32,934 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:11:42,961 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:11:49,358 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:11:49,391 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:11:49,394 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:11:49,438 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:11:52,666 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:11:52,687 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:11:54,413 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:11:54,464 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:12:02,907 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:12:02,951 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:12:09,361 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:12:09,413 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:12:12,709 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:12:19,390 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:12:19,436 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:12:22,691 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:12:22,924 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:12:24,165 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:12:24,218 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:12:29,390 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:12:29,436 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:12:32,645 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:12:32,949 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:12:42,944 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:12:49,408 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:12:49,409 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:12:49,456 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:12:49,456 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:12:52,662 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:12:52,663 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:12:54,138 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:12:54,190 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:02,965 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:13:02,966 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:13:09,385 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:13:09,434 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:13:12,682 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:13:14,510 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:13:14,562 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:13:19,380 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:13:19,426 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:13:22,690 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:22,947 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:13:24,115 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:13:24,167 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:24,219 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:13:24,272 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:29,399 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:13:29,451 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:13:29,452 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:13:32,706 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:13:32,936 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:13:34,486 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:13:34,538 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:13:42,957 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:13:42,959 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:13:43,011 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:13:49,407 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:13:49,408 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:13:49,458 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:13:49,458 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:13:52,711 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:52,711 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:13:54,132 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:13:54,183 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:54,796 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:13:54,797 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:13:54,849 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:13:54,849 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:14:02,967 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:14:02,967 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:14:09,392 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:14:09,444 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:14:12,698 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:14:19,352 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:14:19,399 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:14:22,654 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:14:22,954 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:14:24,077 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:14:24,129 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:14:24,181 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:14:24,233 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:14:24,645 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:14:24,697 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:14:29,355 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:14:29,407 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:14:32,658 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:14:32,908 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:14:34,284 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:14:34,336 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:14:42,917 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:14:49,373 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:14:49,373 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:14:49,423 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:14:49,423 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:14:52,628 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:14:52,628 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:15:02,930 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:15:02,931 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:16:20,353 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:16:20,354 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:16:20,355 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:16:20,355 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:16:37,208 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:16:37,209 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:16:37,484 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:16:37,535 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:16:40,719 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:16:40,770 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:16:42,295 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:16:42,346 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:16:42,397 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:16:42,398 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:16:42,448 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:16:42,450 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:16:50,993 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:16:51,046 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:16:57,235 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:16:57,285 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:17:00,539 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:02,571 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:02,623 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:07,178 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:17:07,225 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:17:10,478 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:17:10,797 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:17:12,310 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:17:12,363 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:17:17,202 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:17,249 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:17:20,504 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:20,735 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:17:21,882 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:21,935 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:22,548 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:22,601 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:30,759 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:17:37,220 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:17:37,220 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:37,269 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:17:37,269 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:17:40,479 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:17:40,530 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:42,358 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:42,410 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:42,459 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:17:42,462 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:42,512 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:17:42,513 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:17:50,780 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:17:50,781 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:17:57,246 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:17:57,291 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:18:00,539 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:18:02,267 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:18:02,320 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:18:07,192 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:18:07,242 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:18:10,494 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:18:10,800 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:18:12,122 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:18:12,175 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 12:18:17,208 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:18:17,254 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 12:18:20,512 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:18:20,755 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 12:18:22,195 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:18:22,247 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 12:18:30,764 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 12:18:37,227 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 12:18:37,228 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 12:18:37,278 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 12:18:37,279 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:06:08,510 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:06:08,511 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:06:08,512 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:06:08,512 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:06:40,592 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:06:40,592 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:06:40,939 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:06:40,999 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:06:44,151 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:06:44,252 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:06:45,778 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:06:45,830 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:06:45,879 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:06:45,882 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:06:45,931 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:06:45,935 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:06:45,983 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:06:46,034 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:06:54,449 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:06:54,508 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:07:00,572 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:07:00,621 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:07:14,129 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:07:17,812 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:07:17,812 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:07:17,813 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:07:17,813 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:07:31,356 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:07:31,357 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:07:31,407 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:07:31,408 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:07:34,658 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:07:34,658 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:07:36,587 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:07:36,638 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:07:36,687 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:07:36,690 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:07:36,739 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:07:36,742 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:07:44,918 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:07:44,919 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:07:51,399 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:07:51,445 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:07:54,710 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:07:56,231 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:07:56,284 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:08:01,396 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:08:01,445 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:08:04,701 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:08:04,954 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:08:06,071 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:08:06,123 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:08:11,403 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:08:11,449 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:08:14,711 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:08:14,955 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:08:24,963 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:08:31,378 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:08:31,379 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:08:31,429 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:08:31,429 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:08:34,632 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:08:34,632 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:08:36,054 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:08:36,054 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:08:36,106 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:08:36,106 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:08:36,517 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:08:36,518 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:08:36,570 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:08:36,570 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:08:44,938 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:08:44,938 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:08:44,941 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:08:44,992 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:08:51,412 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:08:51,463 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:08:54,721 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:09:01,378 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:09:01,423 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:09:04,671 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:09:04,972 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:09:11,369 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:09:11,418 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:09:14,672 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:09:14,933 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:09:24,924 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:09:31,361 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:09:31,362 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:09:31,414 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:09:31,414 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:09:34,668 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:09:34,668 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:09:36,197 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:09:36,198 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:09:36,249 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:09:36,250 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:09:44,926 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:09:44,927 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:09:51,396 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:09:51,442 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:09:54,694 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:10:01,396 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:10:01,440 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:10:04,695 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:10:04,950 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:10:06,778 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:10:06,830 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:10:11,400 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:10:11,449 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:10:14,656 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:10:14,948 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:10:14,951 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:10:15,003 Station_02 simulation/Station_02/isMoving {"isMoving": false}
+2026-07-23 13:10:16,284 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:10:16,336 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:10:24,953 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:10:31,400 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:10:31,402 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:10:31,448 Station_01 simulation/Station_01/isMoving {"isMoving": true}
+2026-07-23 13:10:31,448 Station_02 simulation/Station_02/isMoving {"isMoving": true}
+2026-07-23 13:10:34,707 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:10:34,707 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:10:36,229 Station_02 simulation/Station_02/boxDetected {"boxDetected": true}
+2026-07-23 13:10:36,229 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:10:36,280 Station_02 simulation/Station_02/boxDetected {"boxDetected": false}
+2026-07-23 13:10:36,280 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:10:36,793 Station_01 simulation/Station_01/boxDetected {"boxDetected": true}
+2026-07-23 13:10:36,844 Station_01 simulation/Station_01/boxDetected {"boxDetected": false}
+2026-07-23 13:10:44,959 Station_01 simulation/Station_01/isMoving {"isMoving": false}
+2026-07-23 13:10:44,959 Station_02 simulation/Station_02/isMoving {"isMoving": false}

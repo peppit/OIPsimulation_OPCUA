@@ -159,10 +159,27 @@ class StationOperationDispatcher:
             )
             return
 
+        request_id = payload_envelope.get("requestId")
+        await self.publish_operation_status(
+            operation_name,
+            request_id,
+            "started",
+        )
         try:
             await handler(payload_envelope, payload_envelope.get("params", {}))
-        except Exception:
+            await self.publish_operation_status(
+                operation_name,
+                request_id,
+                "completed",
+            )
+        except Exception as exc:
             logging.exception("[%s] Operation '%s' failed", self.station_id, operation_name)
+            await self.publish_operation_status(
+                operation_name,
+                request_id,
+                "failed",
+                str(exc),
+            )
 
     def _normalize_operation_message(self, operation_name: str, payload: Any) -> Any:
         # New contract from operation-service:
@@ -567,36 +584,70 @@ class ProductionLineController(StationOperationDispatcher):
     async def publish_conveyor_running(self, running):
         if running != self.last_running_state:
             topic_running = f"simulation/{self.station_id}/isRunning"
-            await self.mqtt.publish(topic_running, json.dumps({"isRunning": running}))
+            payload = json.dumps({"isRunning": running})
+            await self.mqtt.publish(topic_running, payload, qos=1, retain=True)
             print("PUB", topic_running, running)
+            PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic_running, payload)
             self.last_running_state = running
 
     async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
             topic_box = f"simulation/{self.station_id}/boxDetected"
+            payload = json.dumps({"boxDetected": box_detected})
             logging.info(
             "[%s] MQTT PUBLISH topic=%s value=%s",
             self.station_id,
             topic_box,
             box_detected,
             )
-            await self.mqtt.publish(topic_box, json.dumps({"boxDetected": box_detected}))
+            await self.mqtt.publish(topic_box, payload, qos=1, retain=True)
             print("PUB", topic_box, box_detected)
+            PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic_box, payload)
+            LATENCY_PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic_box, payload)
             self.last_box_state = box_detected
 
     async def publish_conveyor_speed(self, speed):
         if speed != self.last_speed_state:
             topic_speed = f"simulation/{self.station_id}/currentSpeed"
-            await self.mqtt.publish(topic_speed, json.dumps({"currentSpeed": speed}))
+            payload = json.dumps({"currentSpeed": speed})
+            await self.mqtt.publish(topic_speed, payload, qos=1, retain=True)
             print("PUB", topic_speed, speed)
+            PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic_speed, payload)
             self.last_speed_state = speed
     
     async def publish_robot_moving(self, moving):
         if moving != self.last_executing_state:
             topic_moving = f"simulation/{self.station_id}/isMoving"
-            await self.mqtt.publish(topic_moving, json.dumps({"isMoving": moving}))
+            payload = json.dumps({"isMoving": moving})
+            await self.mqtt.publish(topic_moving, payload, qos=1, retain=True)
             print("PUB", topic_moving, moving)
+            PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic_moving, payload)
+            LATENCY_PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic_moving, payload)
             self.last_executing_state = moving
+
+    async def publish_operation_status(self, operation: str, request_id: Any, status: str, error: str | None = None) -> None:
+
+        """Publish a correlated acknowledgement for an operation command."""
+        topic = f"simulation/{self.station_id}/replies/{operation}"
+        payload = {
+            "requestId": request_id,
+            "stationId": self.station_id,
+            "operation": operation,
+            "status": status,
+            "timestamp": time.time(),
+        }
+        if error:
+            payload["error"] = error
+        json_payload = json.dumps(payload)
+        await self.mqtt.publish(topic, json_payload, qos=1, retain=False)
+        logging.info(
+            "[%s] Published operation acknowledgement requestId=%s operation=%s status=%s",
+            self.station_id,
+            request_id,
+            operation,
+            status,
+        )
+        PUB_DEBUG_LOGGER.info("%s %s %s", self.station_id, topic, json_payload)
 
     async def run_cyclical_logic(self):
         """Your exact pick-and-place logic sequence, running independently for this line."""
@@ -605,6 +656,7 @@ class ProductionLineController(StationOperationDispatcher):
         while True:
             await asyncio.sleep(0.05)
 
+            current_distance = float(await self.sensor_node.get_value())
             # Normalize "no box" distance to 0.0 for consistent downstream mapping.
             if current_distance >= 0.5:
                 if current_distance != 0.0:
@@ -719,6 +771,29 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station):
     else:
         await process_messages(messages_source)
 
+async def publish_station_manifests(mqtt_client: MqttClient) -> None:
+    """Publish retained station manifests for automatic gateway discovery."""
+    manifest_path = os.getenv(
+        "STATION_MANIFESTS_FILE",
+        os.path.join("basyx-setup", "mqtt-aas-bridge", "manifests.json"),
+    )
+    if not os.path.exists(manifest_path):
+        logging.warning("Station manifest file not found: %s", manifest_path)
+        return
+
+    with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+        manifests = json.load(manifest_file)
+    if not isinstance(manifests, dict):
+        raise ValueError("Station manifest file must contain an object keyed by station ID")
+
+    for station_id, manifest in manifests.items():
+        if not isinstance(manifest, dict):
+            continue
+        normalized_station = str(station_id).strip().lower()
+        topic = f"factory/{normalized_station}/manifest"
+        await mqtt_client.publish(topic, json.dumps(manifest), qos=1, retain=True)
+        logging.info("Published retained station manifest to %s", topic)
+
 async def main():
     server = Server()
     await server.init()
@@ -733,12 +808,17 @@ async def main():
     objects_folder = server.nodes.objects
     factory_object = await objects_folder.add_object(idx, "FactoryFloor")
 
-    station_ids = ["Station_01", "Station_02"]
+    station_ids = [
+        station_id.strip()
+        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02").split(",")
+        if station_id.strip()
+    ]
     controllers = []
     controllers_by_station = {}
 
     try:
         async with MqttClient("localhost") as mqtt_client, server:
+            await publish_station_manifests(mqtt_client)
             for s_id in station_ids:
                 controller = ProductionLineController(s_id, idx, factory_object, mqtt_client)
                 await controller.initialize_nodes()

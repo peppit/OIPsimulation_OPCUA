@@ -1,6 +1,8 @@
 __pycache__/
 .vscode/
 OIP_server_logs.csv
+PUB_messages_latency.log
+PUB_messages.log
 sensor_logs.log
 .venv/
 venv/
