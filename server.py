@@ -43,23 +43,8 @@ def _build_latency_pub_debug_logger() -> logging.Logger:
     return logger
 
 
-def _build_sensor_debug_logger() -> logging.Logger:
-    logger = logging.getLogger("simulation.sensor")
-    if logger.handlers:
-        return logger
-
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    log_path = os.path.join(os.path.dirname(__file__), "sensor_logs.log")
-    handler = logging.FileHandler(log_path, encoding="utf-8")
-    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-    logger.addHandler(handler)
-    return logger
-
-
 PUB_DEBUG_LOGGER = _build_pub_debug_logger()
 LATENCY_PUB_DEBUG_LOGGER = _build_latency_pub_debug_logger()
-SENSOR_DEBUG_LOGGER = _build_sensor_debug_logger()
 
 
 OperationHandler = Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]
@@ -92,7 +77,6 @@ class StationOperationDispatcher:
             "speed": "conveyorSpeed",
             "move_box": "moveBox",
             "movebox": "moveBox",
-            "moveBox": "moveBox",
         }
 
     def _build_robot_sequences(self) -> Dict[str, List[Dict[str, Any]]]:
@@ -227,7 +211,7 @@ class StationOperationDispatcher:
         aliases = self.operation_aliases
         return aliases.get(name, aliases.get(name.lower(), name))
 
-    async def _op_conveyor_running(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+    async def _op_conveyor_running(self, _envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
         value = params.get("value", params.get("running"))
         running = self._coerce_bool(value)
         if running is None:
@@ -239,7 +223,7 @@ class StationOperationDispatcher:
             await self.publish_conveyor_running(running)
         logging.info("[%s] Applied operation conveyorRunning=%s", self.station_id, running)
 
-    async def _op_conveyor_speed(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+    async def _op_conveyor_speed(self, _envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
         value = params.get("value", params.get("speed"))
         speed = self._coerce_float(value)
         if speed is None:
@@ -283,9 +267,8 @@ class StationOperationDispatcher:
             await self.publish_conveyor_running(self.target_running)
             await self.publish_conveyor_speed(self.target_speed)
 
-        await self.publish_robot_moving(False)
     
-    async def _op_move_to_home(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+    async def _op_move_to_home(self, _envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
         value = params.get("value", params.get("move"))
         move = self._coerce_bool(value)
         if move is None:
@@ -303,7 +286,6 @@ class StationOperationDispatcher:
             await self.publish_conveyor_running(self.target_running)
             await self.publish_conveyor_speed(self.target_speed)
             
-        await self.publish_robot_moving(False)
         
 
     async def _execute_robot_sequence(self, sequence: List[Dict[str, Any]]) -> None:
@@ -377,7 +359,6 @@ class ProductionLineController(StationOperationDispatcher):
         self.conveyor_speed = None
         self.sensor_node = None
 
-        # Timing log state: keep max 5 t0->t4 samples per server run.
         self.max_latency_samples_per_run =150
         self.logged_latency_samples = 0
         self.pending_t0 = None
@@ -456,7 +437,7 @@ class ProductionLineController(StationOperationDispatcher):
                 if self.global_max_latency is None or latency > self.global_max_latency:
                     self.global_max_latency = latency
 
-    async def _capture_t0_if_needed(self):
+    def _capture_t0_if_needed(self):
         if self.logged_latency_samples >= self.max_latency_samples_per_run:
             return
         self.pending_t0 = time.time()
@@ -510,7 +491,7 @@ class ProductionLineController(StationOperationDispatcher):
                 end_to_end_latency,
             )
 
-    async def _read_payload(self, payload_bytes):
+    def _read_payload(self, payload_bytes):
         payload_text = payload_bytes.decode("utf-8").strip()
         if not payload_text:
             return None
@@ -539,7 +520,7 @@ class ProductionLineController(StationOperationDispatcher):
             return None
 
     async def handle_operation_message(self, operation_name, payload_bytes):
-        payload = await self._read_payload(payload_bytes)
+        payload = self._read_payload(payload_bytes)
         await self.dispatch_operation(operation_name, payload)
 
     async def initialize_nodes(self):
@@ -669,7 +650,7 @@ class ProductionLineController(StationOperationDispatcher):
             # t0: rising edge of box detection event from sensor.
             if box_is_present and not self.waiting_for_pickup:
                 self.waiting_for_pickup = True
-                await self._capture_t0_if_needed()
+                self._capture_t0_if_needed()
             elif not box_is_present and self.waiting_for_pickup:
                 self.waiting_for_pickup = False
 
@@ -813,7 +794,6 @@ async def main():
         for station_id in os.getenv("STATION_IDS", "Station_01,Station_02").split(",")
         if station_id.strip()
     ]
-    controllers = []
     controllers_by_station = {}
 
     try:
@@ -823,12 +803,14 @@ async def main():
                 controller = ProductionLineController(s_id, idx, factory_object, mqtt_client)
                 await controller.initialize_nodes()
                 await controller.publish_initial_state()
-                controllers.append(controller)
                 controllers_by_station[s_id] = controller
 
             print(f"\n[INFO] Unified OPC UA + MQTT Gateway Environment Online!")
             tasks = [mqtt_operation_listener(mqtt_client, controllers_by_station)]
-            tasks.extend(controller.run_cyclical_logic() for controller in controllers)
+            tasks.extend(
+                controller.run_cyclical_logic()
+                for controller in controllers_by_station.values()
+            )
             print(f"[INFO] All production line controllers are running. Press Ctrl+C to stop the server.")
             await asyncio.gather(*tasks)
     except MqttError as exc:
