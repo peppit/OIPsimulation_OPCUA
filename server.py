@@ -5,10 +5,11 @@ import json
 import os
 import sys
 import time
-from typing import Any, Awaitable, Callable, Dict, List
+import uuid
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 from asyncua import Server, ua
 from asyncua.common.callback import CallbackType
-from aiomqtt import Client as MqttClient, MqttError
+from aiomqtt import Client as MqttClient, MqttError, Will
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("asyncua.server.address_space").setLevel(logging.WARNING)
@@ -42,7 +43,6 @@ def log_failed_opcua_writes(event: Any, _service: Any) -> None:
             status,
         )
 
-
 class StationOperationDispatcher:
     """
     Config-driven operation dispatcher for station controllers.
@@ -63,6 +63,7 @@ class StationOperationDispatcher:
     ROBOT_MOTION_TIMEOUT_SECONDS = 30.0
     ROBOT_STATUS_POLL_SECONDS = 0.05
     EXECUTE_RESET_SECONDS = 0.1
+    ROBOT_OPERATIONS = {"movebox", "movetohome"}
 
     def _build_operation_handlers(self) -> Dict[str, OperationHandler]:
         return {
@@ -97,6 +98,7 @@ class StationOperationDispatcher:
 
     async def dispatch_operation(self, operation_name: str, payload: Any) -> None:
         operation_name, payload_envelope = self._normalize_operation_message(operation_name, payload)
+        request_id = payload_envelope.get("requestId")
 
         station_from_payload = payload_envelope.get("stationId")
         if station_from_payload and station_from_payload != self.station_id:
@@ -104,6 +106,12 @@ class StationOperationDispatcher:
                 "[%s] Ignoring operation for different station '%s'",
                 self.station_id,
                 station_from_payload,
+            )
+            await self.publish_operation_status(
+                operation_name,
+                request_id,
+                "failed",
+                f"Operation addressed to station '{station_from_payload}'",
             )
             return
 
@@ -116,21 +124,35 @@ class StationOperationDispatcher:
                 self.station_id,
                 operation_name,
             )
-            return
-
-        request_id = payload_envelope.get("requestId")
-        await self.publish_operation_status(
-            operation_name,
-            request_id,
-            "started",
-        )
-        try:
-            await handler(payload_envelope, payload_envelope.get("params", {}))
             await self.publish_operation_status(
                 operation_name,
                 request_id,
-                "completed",
+                "failed",
+                f"Unknown operation '{operation_name}'",
             )
+            return
+        
+        if key in self.ROBOT_OPERATIONS and not self.robot_ready.is_set():
+            await self.publish_operation_status(
+                operation_name,
+                request_id,
+                "failed",
+                "Robot is not ready",
+            )
+            return
+
+        await self.publish_operation_status(operation_name, request_id,"started")
+
+        try:
+            await handler(payload_envelope, payload_envelope.get("params", {}))
+        except asyncio.CancelledError:
+            await self.publish_operation_status(
+                operation_name,
+                request_id,
+                "failed",
+                "Operation cancelled",
+            )
+            raise
         except Exception as exc:
             logging.exception("[%s] Operation '%s' failed", self.station_id, operation_name)
             await self.publish_operation_status(
@@ -139,6 +161,9 @@ class StationOperationDispatcher:
                 "failed",
                 str(exc),
             )
+            return
+
+        await self.publish_operation_status(operation_name, request_id, "completed")
 
     def _normalize_operation_message(self, operation_name: str, payload: Any) -> tuple[str, Dict[str, Any]]:
         # New contract from operation-service:
@@ -185,11 +210,12 @@ class StationOperationDispatcher:
         if running is None:
             raise ValueError(f"Invalid conveyorRunning payload: {params}")
 
-        async with self.operation_lock:
+        async with self.conveyor_lock:
             self.target_running = running
-            await self.conveyor_running.write_value(running)
-            await self.publish_conveyor_running(running)
-        logging.info("[%s] Applied operation conveyorRunning=%s", self.station_id, running)
+            applied_running = running and not self.box_is_present
+            await self.conveyor_running.write_value(applied_running)
+            await self.publish_conveyor_running(applied_running)
+        logging.info("[%s] Applied operation conveyorRunning=%s", self.station_id, applied_running)
 
     async def _op_conveyor_speed(self, _envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
         value = params.get("value", params.get("speed"))
@@ -199,11 +225,12 @@ class StationOperationDispatcher:
         if speed < 0.0:
             raise ValueError(f"Negative conveyorSpeed is invalid: {speed}")
 
-        async with self.operation_lock:
+        async with self.conveyor_lock:
             self.target_speed = speed
-            await self.conveyor_speed.write_value(ua.Variant(float(speed), ua.VariantType.Float))
-            await self.publish_conveyor_speed(float(speed))
-        logging.info("[%s] Applied operation conveyorSpeed=%s", self.station_id, speed)
+            applied_speed = 0.0 if self.box_is_present else speed
+            await self.conveyor_speed.write_value(ua.Variant(float(applied_speed), ua.VariantType.Float))
+            await self.publish_conveyor_speed(float(applied_speed))
+        logging.info("[%s] Applied operation conveyorSpeed=%s", self.station_id, applied_speed)
 
     async def _op_move_box(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
         source_position = params.get("SourcePosition")
@@ -241,14 +268,10 @@ class StationOperationDispatcher:
             envelope.get("runId"),
         )
 
-        async with self.operation_lock:
+        async with self.robot_lock:
             await self._execute_robot_sequence(sequence)
 
-            logging.info("[%s] Robot sequence complete. Restarting conveyor.", self.station_id)
-            await self.conveyor_running.write_value(self.target_running)
-            await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
-            await self.publish_conveyor_running(self.target_running)
-            await self.publish_conveyor_speed(self.target_speed)
+        await self.restart_conveyor_if_safe()
 
     
     async def _op_move_to_home(self, _envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
@@ -258,17 +281,12 @@ class StationOperationDispatcher:
             raise ValueError(f"Invalid moveToHome payload: {params}")
         
         sequence = self.robot_sequences.get("moveToHome", [])
-        async with self.operation_lock:
+        async with self.robot_lock:
             await self._execute_robot_sequence(sequence)
 
             logging.info("[%s] Robot sequence complete. Restarting conveyor.", self.station_id)
-
-            await self.conveyor_running.write_value(self.target_running)
-            await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
-            await self.publish_conveyor_running(self.target_running)
-            await self.publish_conveyor_speed(self.target_speed)
+        await self.restart_conveyor_if_safe()
             
-        
 
     async def _execute_robot_sequence(self, sequence: List[Dict[str, Any]]) -> None:
         await self.publish_robot_moving(True)
@@ -369,17 +387,23 @@ class ProductionLineController(StationOperationDispatcher):
     Blueprint class to manage the independent state machine and 
     OPC UA data nodes for an individual production station.
     """
-    def __init__(self, station_id, namespace_idx, idx_folder, mqtt_client):
+    def __init__(self, station_id, namespace_idx, idx_folder, mqtt_client, server_instance_id):
         self.station_id = station_id
         self.ns = namespace_idx
         self.folder = idx_folder
         self.mqtt = mqtt_client
-        self.operation_lock = asyncio.Lock()
-        
+        self.server_instance_id = server_instance_id
+        self.robot_lock = asyncio.Lock()
+        self.conveyor_lock = asyncio.Lock()
+        self.operation_queue = asyncio.Queue()
+        self.robot_ready = asyncio.Event()
+  
         # State tracking flags persistent to THIS specific station instance
         self.waiting_for_pickup = False
         self.target_running = True
         self.target_speed = 1.0
+        self.box_is_present = False
+        self.box_event_sequence = 0
 
         # State caches to enforce Report-by-Exception (no duplicate spam)
         self.last_running_state = None
@@ -519,6 +543,16 @@ class ProductionLineController(StationOperationDispatcher):
         payload = self._read_payload(payload_bytes)
         await self.dispatch_operation(operation_name, payload)
 
+    async def run_operation_worker(self):
+        while True:
+            operation_name, payload_bytes = await self.operation_queue.get()
+            try:
+                await self.handle_operation_message(operation_name, payload_bytes)
+            except Exception:
+                logging.exception("[%s] Queued operation failed to dispatch %s", self.station_id, operation_name)
+            finally:
+                self.operation_queue.task_done()
+
     async def initialize_nodes(self):
         """Creates unique OPC UA folders and variables for this specific station."""
         # Create a unique sub-folder for this station (e.g., Station_01)
@@ -568,14 +602,12 @@ class ProductionLineController(StationOperationDispatcher):
     async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
             topic_box = f"simulation/{self.station_id}/boxDetected"
-            payload = json.dumps({"boxDetected": box_detected})
-            logging.info(
-            "[%s] MQTT PUBLISH topic=%s value=%s",
-            self.station_id,
-            topic_box,
-            box_detected,
-            )
-            await self.mqtt.publish(topic_box, payload, qos=1, retain=True)
+            self.box_event_sequence += 1
+            payload = {
+                "boxDetected": box_detected,
+                "eventId": (f"{self.station_id}:{self.server_instance_id}:box:{self.box_event_sequence:06d}"),
+            }         
+            await self.mqtt.publish(topic_box, json.dumps(payload), qos=1, retain=True)
             self.last_box_state = box_detected
 
     async def publish_conveyor_speed(self, speed):
@@ -591,10 +623,37 @@ class ProductionLineController(StationOperationDispatcher):
             payload = json.dumps({"isMoving": moving})
             await self.mqtt.publish(topic_moving, payload, qos=1, retain=True)
             self.last_executing_state = moving
+    
+    async def publish_station_status(self) -> None:
+        topic = f"simulation/{self.station_id}/status"
+        payload = {
+            "stationId": self.station_id,
+            "online": True,
+            "robotReady": self.robot_ready.is_set(),
+            "serverInstanceId": self.server_instance_id,
+            "timestamp": time.time(),
+        }
+        await self.mqtt.publish(topic, json.dumps(payload), qos=1, retain=True)
+
+    async def run_robot_readiness_monitor(self, mqtt_listener_ready: asyncio.Event) -> None:
+        await mqtt_listener_ready.wait()
+        await self.publish_station_status()
+
+        while not self.robot_ready.is_set():
+            done = bool(await self.done_node.get_value())
+            execute = bool(await self.exec_node.get_value())
+            if done and not execute:
+                self.robot_ready.set()
+                await self.publish_station_status()
+                return
+
+            await asyncio.sleep(self.ROBOT_STATUS_POLL_SECONDS)
 
     async def publish_operation_status(self, operation: str, request_id: Any, status: str, error: str | None = None) -> None:
 
         """Publish a correlated acknowledgement for an operation command."""
+        if not request_id:
+            return
         topic = f"simulation/{self.station_id}/replies/{operation}"
         payload = {
             "requestId": request_id,
@@ -615,6 +674,26 @@ class ProductionLineController(StationOperationDispatcher):
             status,
         )
 
+    async def stop_conveyor_for_box(self):
+            async with self.conveyor_lock:
+                await self.conveyor_running.write_value(False)
+                await self.conveyor_speed.write_value(ua.Variant(0.0, ua.VariantType.Float))
+                await self.publish_conveyor_running(False)
+                await self.publish_conveyor_speed(0.0)
+
+    async def restart_conveyor_if_safe(self) -> bool:
+        async with self.conveyor_lock:
+            if self.box_is_present:
+                logging.info("[%s] Cannot restart conveyor: box still present.", self.station_id)
+                return False
+            if not self.target_running:
+                return False
+            await self.conveyor_running.write_value(True)
+            await self.conveyor_speed.write_value(ua.Variant(self.target_speed, ua.VariantType.Float))
+            await self.publish_conveyor_running(True)
+            await self.publish_conveyor_speed(self.target_speed)
+            return True
+
     async def run_cyclical_logic(self):
         """Your exact pick-and-place logic sequence, running independently for this line."""
         print(f"[DIAGNOSTIC] Monitoring Laser Sensor for {self.station_id}...")
@@ -630,33 +709,34 @@ class ProductionLineController(StationOperationDispatcher):
                 current_distance = 0.0
 
             box_is_present = (current_distance > 0.01) and (current_distance < 0.5)
+            previous_box_present = self.box_is_present
+            self.box_is_present = box_is_present
+            rising_edge = box_is_present and not previous_box_present
+            falling_edge = not box_is_present and previous_box_present
 
             # t0 is captured immediately before publishing the request event.
-            if box_is_present and not self.waiting_for_pickup:
+            if rising_edge:
                 self.waiting_for_pickup = True
                 self._capture_t0_if_needed()
-            elif not box_is_present and self.waiting_for_pickup:
+                logging.info("[%s] Box detected! Waiting for pickup.", self.station_id)
+                await self.stop_conveyor_for_box()
+            elif falling_edge:
                 self.waiting_for_pickup = False
+                logging.info("[%s] Pickup sensor cleared", self.station_id)
+                await self.restart_conveyor_if_safe()
+            
             await self.publish_box_detected(box_is_present)
 
-            # Safety Auto-Stop: If a box arrives and the conveyor is running, stop it.
-            if box_is_present and not self.operation_lock.locked():
-                current_running = await self.conveyor_running.get_value()
-                if current_running:
-                    logging.info("[%s] Box detected automatically! Halting conveyor for pickup.", self.station_id)
-                    await self.conveyor_running.write_value(False)
-                    await self.conveyor_speed.write_value(ua.Variant(0.0, ua.VariantType.Float))
-                    await self.publish_conveyor_running(False)
-                    await self.publish_conveyor_speed(0.0)
-            
-            is_currently_busy = self.operation_lock.locked()
+            is_currently_busy = self.robot_lock.locked()
             await self.publish_robot_moving(is_currently_busy)
             
 
-async def mqtt_operation_listener(mqtt_client, controllers_by_station):
+async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_ready=None):
     operation_topic = "simulation/+/operations/+"
     await mqtt_client.subscribe(operation_topic)
     logging.info("MQTT operation listener subscribed to %s", operation_topic)
+    if listener_ready is not None:
+        listener_ready.set()
 
     controllers_by_station_ci = {
         station_id.lower(): controller
@@ -691,13 +771,7 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station):
             if controller is None:
                 logging.warning("MQTT operation received for unknown station: %s", station_id)
                 continue
-            
-            task = asyncio.create_task(controller.handle_operation_message(operation_name, message.payload))
-            pending_tasks.add(task)
-            task.add_done_callback(_on_task_done)
-
-        if pending_tasks:
-            await asyncio.gather(*pending_tasks, return_exceptions=True)
+            await controller.operation_queue.put((operation_name, message.payload))
             
     messages_source = mqtt_client.messages
     if callable(messages_source):
@@ -756,28 +830,78 @@ async def main():
 
     station_ids = [
         station_id.strip()
-        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02").split(",")
+        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02,Station_03,Station_04,Station_05,Station_06,Station_07," \
+        "Station_08,Station_09,Station_10,Station_11,Station_12,Station_13,Station_14,Station_15,Station_16").split(",")
         if station_id.strip()
     ]
     controllers_by_station = {}
+    server_instance_id = str(uuid.uuid4())
+    server_status_topic = "simulation/server/status"
+    server_offline_payload = json.dumps({
+        "online": False,
+        "serverInstanceId": server_instance_id,
+        "timestamp": time.time(),
+    })
+    server_will = Will(
+        topic=server_status_topic,
+        payload=server_offline_payload,
+        qos=1,
+        retain=True,
+    )
 
     try:
-        async with MqttClient("localhost") as mqtt_client, server:
+        async with MqttClient("localhost", will=server_will) as mqtt_client, server:
+            await mqtt_client.publish(
+                server_status_topic,
+                json.dumps({
+                    "online": True,
+                    "serverInstanceId": server_instance_id,
+                    "timestamp": time.time(),
+                }),
+                qos=1,
+                retain=True,
+            )
             await publish_station_manifests(mqtt_client)
             for s_id in station_ids:
-                controller = ProductionLineController(s_id, idx, factory_object, mqtt_client)
+                controller = ProductionLineController(
+                    s_id,
+                    idx,
+                    factory_object,
+                    mqtt_client,
+                    server_instance_id,
+                )
                 await controller.initialize_nodes()
                 await controller.publish_initial_state()
                 controllers_by_station[s_id] = controller
 
             print(f"\n[INFO] Unified OPC UA + MQTT Gateway Environment Online!")
-            tasks = [mqtt_operation_listener(mqtt_client, controllers_by_station)]
-            tasks.extend(
-                controller.run_cyclical_logic()
-                for controller in controllers_by_station.values()
-            )
-            print(f"[INFO] All production line controllers are running. Press Ctrl+C to stop the server.")
-            await asyncio.gather(*tasks)
+            mqtt_listener_ready = asyncio.Event()
+            tasks = [
+                mqtt_operation_listener(
+                    mqtt_client,
+                    controllers_by_station,
+                    mqtt_listener_ready,
+                )
+            ]
+
+            for controller in controllers_by_station.values():
+                tasks.append(controller.run_cyclical_logic())
+                tasks.append(controller.run_operation_worker())
+                tasks.append(controller.run_robot_readiness_monitor(mqtt_listener_ready))
+
+            try:
+                await asyncio.gather(*tasks)
+            finally:
+                await mqtt_client.publish(
+                    server_status_topic,
+                    json.dumps({
+                        "online": False,
+                        "serverInstanceId": server_instance_id,
+                        "timestamp": time.time(),
+                    }),
+                    qos=1,
+                    retain=True,
+                )
     except MqttError as exc:
         logging.error(
             "MQTT connection failed (%s). Ensure a broker is running at localhost:1883.",
