@@ -64,6 +64,8 @@ class StationOperationDispatcher:
     ROBOT_STATUS_POLL_SECONDS = 0.05
     EXECUTE_RESET_SECONDS = 0.1
     ROBOT_OPERATIONS = {"movebox", "movetohome"}
+    BOX_PRESENT_CONFIRM_SAMPLES = 2
+    BOX_CLEAR_DEBOUNCE_SECONDS = 0.25
 
     def _build_operation_handlers(self) -> Dict[str, OperationHandler]:
         return {
@@ -248,11 +250,22 @@ class StationOperationDispatcher:
 
         route_key = (source_position, target_position)
         sequence = move_box_routes.get(route_key)
+
         if sequence is None:
             raise ValueError(
                 "No moveBox sequence configured for "
-                f"station={self.station_id}, source={source_position}, target={target_position}"
+                f"station={self.station_id}, "
+                f"source={source_position}, "
+                f"target={target_position}"
             )
+
+        if not self.pending_box_pick:
+            raise ValueError(
+                f"moveBox rejected for {self.station_id}: "
+                "no confirmed unconsumed box detection"
+            )
+
+        self.pending_box_pick = False
 
         logging.info(
             "[%s] Executing moveBox source=%s target=%s requestId=%s",
@@ -261,6 +274,7 @@ class StationOperationDispatcher:
             target_position,
             envelope.get("requestId"),
         )
+
 
         # t4: when moveBox is invoked in this server.
         await self._capture_t4_and_log_pair(
@@ -403,6 +417,10 @@ class ProductionLineController(StationOperationDispatcher):
         self.target_running = True
         self.target_speed = 1.0
         self.box_is_present = False
+        self.detection_armed = True
+        self.pending_box_pick = False
+        self.present_sample_count = 0
+        self.clear_started_at = None
         self.box_event_sequence = 0
 
         # State caches to enforce Report-by-Exception (no duplicate spam)
@@ -702,30 +720,65 @@ class ProductionLineController(StationOperationDispatcher):
             await asyncio.sleep(0.05)
 
             current_distance = float(await self.sensor_node.get_value())
-            # Normalize "no box" distance to 0.0 for consistent downstream mapping.
-            if current_distance >= 0.5:
-                if current_distance != 0.0:
-                    await self.sensor_node.write_value(ua.Variant(0.0, ua.VariantType.Float))
-                current_distance = 0.0
 
-            box_is_present = (current_distance > 0.01) and (current_distance < 0.5)
-            previous_box_present = self.box_is_present
-            self.box_is_present = box_is_present
-            rising_edge = box_is_present and not previous_box_present
-            falling_edge = not box_is_present and previous_box_present
+            raw_box_present = 0.01 < current_distance < 0.5
+            now = asyncio.get_running_loop().time()
 
-            # t0 is captured immediately before publishing the request event.
-            if rising_edge:
-                self.waiting_for_pickup = True
-                self._capture_t0_if_needed()
-                logging.info("[%s] Box detected! Waiting for pickup.", self.station_id)
-                await self.stop_conveyor_for_box()
-            elif falling_edge:
-                self.waiting_for_pickup = False
-                logging.info("[%s] Pickup sensor cleared", self.station_id)
-                await self.restart_conveyor_if_safe()
-            
-            await self.publish_box_detected(box_is_present)
+            if raw_box_present:
+                self.clear_started_at = None
+                self.present_sample_count += 1
+
+                presence_confirmed = (self.present_sample_count >= self.BOX_PRESENT_CONFIRM_SAMPLES)
+
+                if presence_confirmed and self.detection_armed:
+                    # Disarm until the sensor has been stably clear.
+                    self.detection_armed = False
+                    self.pending_box_pick = True
+                    self.box_is_present = True
+                    self.waiting_for_pickup = True
+
+                    self._capture_t0_if_needed()
+
+                    logging.info(
+                        "[%s] Confirmed box at distance %.3f; pick token created.",
+                        self.station_id,
+                        current_distance,
+                    )
+
+                    await self.stop_conveyor_for_box()
+                    await self.publish_box_detected(True)
+
+            else:
+                self.present_sample_count = 0
+
+                if self.clear_started_at is None:
+                    self.clear_started_at = now
+
+                clear_duration = now - self.clear_started_at
+                clear_confirmed = (clear_duration >= self.BOX_CLEAR_DEBOUNCE_SECONDS)
+
+                if clear_confirmed:
+                    if self.box_is_present:
+                        self.box_is_present = False
+                        self.waiting_for_pickup = False
+
+                        logging.info(
+                            "[%s] Sensor stably clear for %.3f seconds.",
+                            self.station_id,
+                            clear_duration,
+                        )
+
+                        await self.publish_box_detected(False)
+                        await self.restart_conveyor_if_safe()
+
+                    # This does not depend on robot_lock. A new box may therefore
+                    # be detected while the previous robot operation is running.
+                    if not self.detection_armed:
+                        self.detection_armed = True
+                        logging.info(
+                            "[%s] Box detection re-armed.",
+                            self.station_id,
+                        )
 
             is_currently_busy = self.robot_lock.locked()
             await self.publish_robot_moving(is_currently_busy)
