@@ -76,34 +76,62 @@ class StationOperationDispatcher:
         }
 
     def _build_robot_sequences(self) -> Dict[str, Any]:
-        # MoveBox routes are keyed by their canonical AAS position pair. This
-        # ensures the supplied SourcePosition and TargetPosition select the
-        # actual sequence instead of being accepted and then ignored.
-        return {
-            "moveBox": {
-                ("Conveyor1", "Pallet1"): [
-                    {"action": "execute_command", "cmd": 1},
-                    {"action": "set_gripper", "value": True},
-                    {"action": "sleep", "seconds": 1.0},
-                    {"action": "execute_command", "cmd": 2},
-                    {"action": "execute_command", "cmd": 3},
-                    {"action": "execute_command", "cmd": 4},
-                    {"action": "set_gripper", "value": False},
-                    {"action": "sleep", "seconds": 1.5},
-                    {"action": "execute_command", "cmd": 3},
-                ],
+        station_01_sequence = [
+            {"action": "execute_command", "cmd": 1},
+            {"action": "set_gripper", "value": True},
+            {"action": "sleep", "seconds": 1.0},
+            {"action": "execute_command", "cmd": 2},
+            {"action": "execute_command", "cmd": 3},
+            {"action": "execute_command", "cmd": 4},
+            {"action": "set_gripper", "value": False},
+            {"action": "sleep", "seconds": 1.5},
+            {"action": "execute_command", "cmd": 3},
+        ]
+
+        station_02_sequence = [
+            {"action": "execute_command", "cmd": 5},
+            {"action": "set_gripper", "value": True},
+            {"action": "sleep", "seconds": 1.0},
+            {"action": "execute_command", "cmd": 6},
+            {"action": "execute_command", "cmd": 3},
+            {"action": "execute_command", "cmd": 4},
+            {"action": "set_gripper", "value": False},
+            {"action": "sleep", "seconds": 1.5},
+            {"action": "execute_command", "cmd": 3},
+        ]
+
+        routes_by_robot = {
+            "robot_01": {
+                ("station_01", "Conveyor1", "Pallet1"):
+                    station_01_sequence,
             },
-            "moveToHome": [
-                {"action": "execute_command", "cmd": 0},
-            ]
+            "robot_02": {
+                ("station_01", "Conveyor1", "Pallet1"):
+                    station_01_sequence,
+                ("station_02", "Conveyor2", "Pallet1"):
+                    station_02_sequence,
+            },
         }
 
-    async def dispatch_operation(self, operation_name: str, payload: Any) -> None:
+        return {
+            "moveBox": routes_by_robot.get(self.robot_id.lower(), {}),
+            "moveToHome": [
+                {"action": "execute_command", "cmd": 0},
+            ],
+        }
+
+    async def dispatch_operation(self, operation_name: str, payload: Any, selected_executor: Optional["ProductionLineController"] = None) -> None:
         operation_name, payload_envelope = self._normalize_operation_message(operation_name, payload)
         request_id = payload_envelope.get("requestId")
+        key = operation_name.strip().lower()
+        executor = selected_executor or self
+        robot_id = executor.robot_id if key in self.ROBOT_OPERATIONS else None
 
         station_from_payload = payload_envelope.get("stationId")
-        if station_from_payload and station_from_payload != self.station_id:
+        if (
+            station_from_payload
+            and str(station_from_payload).lower() != self.station_id.lower()
+        ):
             logging.warning(
                 "[%s] Ignoring operation for different station '%s'",
                 self.station_id,
@@ -114,10 +142,10 @@ class StationOperationDispatcher:
                 request_id,
                 "failed",
                 f"Operation addressed to station '{station_from_payload}'",
+                robot_id=robot_id,
             )
             return
 
-        key = operation_name.strip().lower()
         handler = self.operation_handlers.get(key)
 
         if handler is None:
@@ -131,19 +159,27 @@ class StationOperationDispatcher:
                 request_id,
                 "failed",
                 f"Unknown operation '{operation_name}'",
+                robot_id=robot_id,
             )
             return
         
-        if key in self.ROBOT_OPERATIONS and not self.robot_ready.is_set():
+        if key in self.ROBOT_OPERATIONS and not executor.robot_ready.is_set():
             await self.publish_operation_status(
                 operation_name,
                 request_id,
                 "failed",
-                "Robot is not ready",
+                f"Selected robot '{executor.robot_id}' is not ready",
+                robot_id=executor.robot_id,
             )
             return
 
-        await self.publish_operation_status(operation_name, request_id,"started")
+        payload_envelope["_executor"] = executor
+        await self.publish_operation_status(
+            operation_name,
+            request_id,
+            "started",
+            robot_id=robot_id,
+        )
 
         try:
             await handler(payload_envelope, payload_envelope.get("params", {}))
@@ -153,6 +189,7 @@ class StationOperationDispatcher:
                 request_id,
                 "failed",
                 "Operation cancelled",
+                robot_id=robot_id,
             )
             raise
         except Exception as exc:
@@ -162,10 +199,16 @@ class StationOperationDispatcher:
                 request_id,
                 "failed",
                 str(exc),
+                robot_id=robot_id,
             )
             return
 
-        await self.publish_operation_status(operation_name, request_id, "completed")
+        await self.publish_operation_status(
+            operation_name,
+            request_id,
+            "completed",
+            robot_id=robot_id,
+        )
 
     def _normalize_operation_message(self, operation_name: str, payload: Any) -> tuple[str, Dict[str, Any]]:
         # New contract from operation-service:
@@ -183,6 +226,7 @@ class StationOperationDispatcher:
                     "requestId": payload.get("requestId"),
                     "runId": payload.get("runId"),
                     "stationId": payload.get("stationId", self.station_id),
+                    "robotId": payload.get("robotId"),
                     "operation": op_from_payload,
                     "params": params,
                 }
@@ -193,6 +237,7 @@ class StationOperationDispatcher:
                 "requestId": payload.get("requestId"),
                 "runId": payload.get("runId"),
                 "stationId": self.station_id,
+                "robotId": payload.get("robotId"),
                 "operation": operation_name,
                 "params": payload,
             }
@@ -202,6 +247,7 @@ class StationOperationDispatcher:
             "requestId": None,
             "runId": None,
             "stationId": self.station_id,
+            "robotId": None,
             "operation": operation_name,
             "params": {"value": payload},
         }
@@ -235,6 +281,8 @@ class StationOperationDispatcher:
         logging.info("[%s] Applied operation conveyorSpeed=%s", self.station_id, applied_speed)
 
     async def _op_move_box(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+        destination = self
+        executor = envelope.get("_executor") or self
         source_position = params.get("SourcePosition")
         target_position = params.get("TargetPosition")
         if not isinstance(source_position, str) or not source_position.strip():
@@ -244,61 +292,64 @@ class StationOperationDispatcher:
 
         source_position = source_position.strip()
         target_position = target_position.strip()
-        move_box_routes = self.robot_sequences.get("moveBox", {})
+        move_box_routes = executor.robot_sequences.get("moveBox", {})
         if not isinstance(move_box_routes, dict):
             raise ValueError("moveBox route configuration is invalid")
 
-        route_key = (source_position, target_position)
+        route_key = (destination.station_id.strip().lower(), source_position, target_position)
         sequence = move_box_routes.get(route_key)
 
         if sequence is None:
             raise ValueError(
                 "No moveBox sequence configured for "
-                f"station={self.station_id}, "
+                f"station={destination.station_id}, robot={executor.robot_id}, "
                 f"source={source_position}, "
                 f"target={target_position}"
             )
 
-        if not self.pending_box_pick:
+        if not destination.pending_box_pick:
             raise ValueError(
-                f"moveBox rejected for {self.station_id}: "
+                f"moveBox rejected for {destination.station_id}: "
                 "no confirmed unconsumed box detection"
             )
 
-        self.pending_box_pick = False
+        destination.pending_box_pick = False
 
         logging.info(
-            "[%s] Executing moveBox source=%s target=%s requestId=%s",
-            self.station_id,
+            "Executing moveBox requestId=%s stationId=%s robotId=%s "
+            "source=%s target=%s",
+            envelope.get("requestId"),
+            destination.station_id,
+            executor.robot_id,
             source_position,
             target_position,
-            envelope.get("requestId"),
         )
 
 
         # t4: when moveBox is invoked in this server.
-        await self._capture_t4_and_log_pair(
+        await destination._capture_t4_and_log_pair(
             envelope.get("requestId"),
             envelope.get("runId"),
         )
 
-        async with self.robot_lock:
-            await self._execute_robot_sequence(sequence)
+        async with executor.robot_lock:
+            await executor._execute_robot_sequence(sequence)
 
-        await self.restart_conveyor_if_safe()
+        await destination.restart_conveyor_if_safe()
 
     
-    async def _op_move_to_home(self, _envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+    async def _op_move_to_home(self, envelope: Dict[str, Any], params: Dict[str, Any]) -> None:
+        executor = envelope.get("_executor") or self
         value = params.get("value", params.get("move"))
         move = self._coerce_bool(value)
         if move is None:
             raise ValueError(f"Invalid moveToHome payload: {params}")
         
-        sequence = self.robot_sequences.get("moveToHome", [])
-        async with self.robot_lock:
-            await self._execute_robot_sequence(sequence)
+        sequence = executor.robot_sequences.get("moveToHome", [])
+        async with executor.robot_lock:
+            await executor._execute_robot_sequence(sequence)
 
-            logging.info("[%s] Robot sequence complete. Restarting conveyor.", self.station_id)
+            logging.info("[%s] Robot sequence complete. Restarting conveyor.", executor.robot_id)
         await self.restart_conveyor_if_safe()
             
 
@@ -401,8 +452,17 @@ class ProductionLineController(StationOperationDispatcher):
     Blueprint class to manage the independent state machine and 
     OPC UA data nodes for an individual production station.
     """
-    def __init__(self, station_id, namespace_idx, idx_folder, mqtt_client, server_instance_id):
+    def __init__(
+        self,
+        station_id,
+        namespace_idx,
+        idx_folder,
+        mqtt_client,
+        server_instance_id,
+        robot_id=None,
+    ):
         self.station_id = station_id
+        self.robot_id = robot_id or station_id.replace("Station_", "Robot_", 1)
         self.ns = namespace_idx
         self.folder = idx_folder
         self.mqtt = mqtt_client
@@ -557,15 +617,20 @@ class ProductionLineController(StationOperationDispatcher):
         except (TypeError, ValueError):
             return None
 
-    async def handle_operation_message(self, operation_name, payload_bytes):
+    async def handle_operation_message(self, operation_name, payload_bytes, selected_executor=None):
         payload = self._read_payload(payload_bytes)
-        await self.dispatch_operation(operation_name, payload)
+        await self.dispatch_operation(operation_name, payload, selected_executor)
 
     async def run_operation_worker(self):
         while True:
-            operation_name, payload_bytes = await self.operation_queue.get()
+            queued_operation = await self.operation_queue.get()
             try:
-                await self.handle_operation_message(operation_name, payload_bytes)
+                operation_name, payload_bytes, *executor = queued_operation
+                await self.handle_operation_message(
+                    operation_name,
+                    payload_bytes,
+                    executor[0] if executor else None,
+                )
             except Exception:
                 logging.exception("[%s] Queued operation failed to dispatch %s", self.station_id, operation_name)
             finally:
@@ -608,6 +673,8 @@ class ProductionLineController(StationOperationDispatcher):
 
         await self.publish_conveyor_running(bool(running))
         await self.publish_conveyor_speed(float(speed))
+        await self.publish_box_detected(False)
+        await self.publish_robot_moving(False)
 
 
     async def publish_conveyor_running(self, running):
@@ -667,9 +734,24 @@ class ProductionLineController(StationOperationDispatcher):
 
             await asyncio.sleep(self.ROBOT_STATUS_POLL_SECONDS)
 
-    async def publish_operation_status(self, operation: str, request_id: Any, status: str, error: str | None = None) -> None:
+    async def publish_operation_status(
+        self,
+        operation: str,
+        request_id: Any,
+        status: str,
+        error: str | None = None,
+        robot_id: str | None = None,
+    ) -> None:
 
         """Publish a correlated acknowledgement for an operation command."""
+        logging.info(
+            "Operation status requestId=%s stationId=%s robotId=%s operation=%s status=%s",
+            request_id,
+            self.station_id,
+            robot_id,
+            operation,
+            status,
+        )
         if not request_id:
             return
         topic = f"simulation/{self.station_id}/replies/{operation}"
@@ -680,17 +762,12 @@ class ProductionLineController(StationOperationDispatcher):
             "status": status,
             "timestamp": time.time(),
         }
+        if robot_id:
+            payload["robotId"] = robot_id
         if error:
             payload["error"] = error
         json_payload = json.dumps(payload)
         await self.mqtt.publish(topic, json_payload, qos=1, retain=False)
-        logging.info(
-            "[%s] Published operation acknowledgement requestId=%s operation=%s status=%s",
-            self.station_id,
-            request_id,
-            operation,
-            status,
-        )
 
     async def stop_conveyor_for_box(self):
             async with self.conveyor_lock:
@@ -784,22 +861,72 @@ class ProductionLineController(StationOperationDispatcher):
             await self.publish_robot_moving(is_currently_busy)
             
 
-async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_ready=None):
-    operation_topic = "simulation/+/operations/+"
-    await mqtt_client.subscribe(operation_topic)
-    logging.info("MQTT operation listener subscribed to %s", operation_topic)
+async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_ready=None, controllers_by_robot=None):
+    operation_topics = (
+        "simulation/+/operations/+",
+        "simulation/robots/+/operations/+",
+    )
+    for operation_topic in operation_topics:
+        await mqtt_client.subscribe(operation_topic)
+        logging.info("MQTT operation listener subscribed to %s", operation_topic)
     if listener_ready is not None:
         listener_ready.set()
 
+    if controllers_by_robot is None:
+        controllers_by_robot = {
+            controller.robot_id: controller
+            for controller in controllers_by_station.values()
+        }
     controllers_by_station_ci = {
         station_id.lower(): controller
         for station_id, controller in controllers_by_station.items()
     }
+    controllers_by_robot_ci = {
+        robot_id.lower(): controller
+        for robot_id, controller in controllers_by_robot.items()
+    }
 
     def _resolve_target(topic_parts):
         if len(topic_parts) == 4 and topic_parts[0] == "simulation" and topic_parts[2] == "operations":
-            return topic_parts[1], topic_parts[3]
-        return None, None
+            return "station", topic_parts[1], topic_parts[3]
+        if (
+            len(topic_parts) == 5
+            and topic_parts[0] == "simulation"
+            and topic_parts[1] == "robots"
+            and topic_parts[3] == "operations"
+        ):
+            return "robot", topic_parts[2], topic_parts[4]
+        return None, None, None
+
+    def _payload_envelope(payload_bytes):
+        try:
+            if isinstance(payload_bytes, bytes):
+                payload_bytes = payload_bytes.decode("utf-8")
+            payload = json.loads(payload_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    async def _reject_robot_request(destination, operation, envelope, robot_id, error):
+        request_id = envelope.get("requestId")
+        station_id = envelope.get("stationId")
+        logging.warning(
+            "Robot operation rejected requestId=%s stationId=%s robotId=%s "
+            "operation=%s status=failed error=%s",
+            request_id,
+            station_id,
+            robot_id,
+            operation,
+            error,
+        )
+        if destination is not None:
+            await destination.publish_operation_status(
+                operation,
+                request_id,
+                "failed",
+                error,
+                robot_id=robot_id,
+            )
 
     async def process_messages(messages):
         pending_tasks = set()
@@ -814,17 +941,84 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
         async for message in messages:
             logging.info("MQTT RX topic=%s payload=%s", message.topic, message.payload)
             topic_parts = str(message.topic).split("/")
-            station_id, operation_name = _resolve_target(topic_parts)
-            if station_id is None or operation_name is None:
+            route_type, route_id, operation_name = _resolve_target(topic_parts)
+            if route_type is None or route_id is None or operation_name is None:
                 logging.warning("Ignoring malformed topic: %s", message.topic)
                 continue
-            controller = controllers_by_station.get(station_id)
-            if controller is None and isinstance(station_id, str):
-                controller = controllers_by_station_ci.get(station_id.lower())
-            if controller is None:
-                logging.warning("MQTT operation received for unknown station: %s", station_id)
+
+            if route_type == "station":
+                controller = controllers_by_station.get(route_id)
+                if controller is None and isinstance(route_id, str):
+                    controller = controllers_by_station_ci.get(route_id.lower())
+                if controller is None:
+                    logging.warning("MQTT operation received for unknown station: %s", route_id)
+                    continue
+                await controller.operation_queue.put((operation_name, message.payload, controller))
                 continue
-            await controller.operation_queue.put((operation_name, message.payload))
+
+            envelope = _payload_envelope(message.payload)
+            station_id = envelope.get("stationId")
+            if not isinstance(station_id, str) or not station_id.strip():
+                await _reject_robot_request(
+                    None,
+                    operation_name,
+                    envelope,
+                    route_id,
+                    "stationId is required for robot-routed operations",
+                )
+                continue
+            station_id = station_id.strip()
+            destination = controllers_by_station.get(station_id)
+            if destination is None:
+                destination = controllers_by_station_ci.get(station_id.lower())
+            if destination is None:
+                await _reject_robot_request(
+                    None,
+                    operation_name,
+                    envelope,
+                    route_id,
+                    f"Unknown destination station '{station_id}'",
+                )
+                continue
+
+            if operation_name.strip().lower() not in StationOperationDispatcher.ROBOT_OPERATIONS:
+                await _reject_robot_request(
+                    destination,
+                    operation_name,
+                    envelope,
+                    route_id,
+                    "Robot-specific topics only accept robot operations",
+                )
+                continue
+
+            payload_robot_id = envelope.get("robotId")
+            if payload_robot_id is not None and (
+                not isinstance(payload_robot_id, str)
+                or payload_robot_id.lower() != route_id.lower()
+            ):
+                await _reject_robot_request(
+                    destination,
+                    operation_name,
+                    envelope,
+                    route_id,
+                    f"Topic robotId '{route_id}' does not match payload robotId '{payload_robot_id}'",
+                )
+                continue
+
+            executor = controllers_by_robot.get(route_id)
+            if executor is None:
+                executor = controllers_by_robot_ci.get(route_id.lower())
+            if executor is None:
+                await _reject_robot_request(
+                    destination,
+                    operation_name,
+                    envelope,
+                    route_id,
+                    f"Unknown robot '{route_id}'",
+                )
+                continue
+
+            await destination.operation_queue.put((operation_name, message.payload, executor))
             
     messages_source = mqtt_client.messages
     if callable(messages_source):
@@ -883,11 +1077,11 @@ async def main():
 
     station_ids = [
         station_id.strip()
-        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02,Station_03,Station_04,Station_05,Station_06,Station_07," \
-        "Station_08,Station_09,Station_10,Station_11,Station_12,Station_13,Station_14,Station_15,Station_16").split(",")
+        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02").split(",")
         if station_id.strip()
     ]
     controllers_by_station = {}
+    controllers_by_robot = {}
     server_instance_id = str(uuid.uuid4())
     server_status_topic = "simulation/server/status"
     server_offline_payload = json.dumps({
@@ -916,16 +1110,19 @@ async def main():
             )
             await publish_station_manifests(mqtt_client)
             for s_id in station_ids:
+                robot_id = s_id.replace("Station_", "Robot_", 1)
                 controller = ProductionLineController(
                     s_id,
                     idx,
                     factory_object,
                     mqtt_client,
                     server_instance_id,
+                    robot_id=robot_id,
                 )
                 await controller.initialize_nodes()
                 await controller.publish_initial_state()
                 controllers_by_station[s_id] = controller
+                controllers_by_robot[robot_id] = controller
 
             print(f"\n[INFO] Unified OPC UA + MQTT Gateway Environment Online!")
             mqtt_listener_ready = asyncio.Event()
@@ -933,7 +1130,8 @@ async def main():
                 mqtt_operation_listener(
                     mqtt_client,
                     controllers_by_station,
-                    mqtt_listener_ready,
+                    listener_ready=mqtt_listener_ready,
+                    controllers_by_robot=controllers_by_robot,
                 )
             ]
 

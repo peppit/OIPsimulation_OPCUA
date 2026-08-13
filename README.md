@@ -18,10 +18,30 @@ The server subscribes to:
 
 `simulation/+/operations/+`
 
+`simulation/robots/+/operations/+`
+
 Expected operation topics:
 
 - `simulation/Station_01/operations/conveyorRunning`
 - `simulation/Station_01/operations/conveyorSpeed`
+- `simulation/Station_01/operations/moveBox` (legacy local-robot route)
+- `simulation/robots/Robot_02/operations/moveBox` (explicit executor route)
+
+Robot-routed requests keep the destination station in the payload while the
+topic selects the executor:
+
+```json
+{
+  "requestId": "request-123",
+  "robotId": "Robot_02",
+  "stationId": "Station_01",
+  "operation": "moveBox",
+  "params": {
+    "SourcePosition": "Conveyor1",
+    "TargetPosition": "Pallet1"
+  }
+}
+```
 
 Example payloads:
 
