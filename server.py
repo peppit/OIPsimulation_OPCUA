@@ -460,9 +460,11 @@ class ProductionLineController(StationOperationDispatcher):
         mqtt_client,
         server_instance_id,
         robot_id=None,
+        conveyor_id=None,
     ):
         self.station_id = station_id
         self.robot_id = robot_id or station_id.replace("Station_", "Robot_", 1)
+        self.conveyor_id = conveyor_id or station_id.replace("Station_", "Conveyor_", 1)
         self.ns = namespace_idx
         self.folder = idx_folder
         self.mqtt = mqtt_client
@@ -488,12 +490,14 @@ class ProductionLineController(StationOperationDispatcher):
         self.last_speed_state = None
         self.last_box_state = None
         self.last_executing_state = None
+        self.last_fault_active = None
         
         # Node placeholders
         self.cmd_node = None
         self.exec_node = None
         self.done_node = None
         self.gripper_node = None
+        self.fault_active_node = None
         self.conveyor_running = None
         self.conveyor_speed = None
         self.sensor_node = None
@@ -650,6 +654,7 @@ class ProductionLineController(StationOperationDispatcher):
         self.exec_node = await robot_object.add_variable(self.ns, "Execute", False, varianttype=ua.VariantType.Boolean)
         self.done_node = await robot_object.add_variable(self.ns, "Done", False, varianttype=ua.VariantType.Boolean)
         self.gripper_node = await robot_object.add_variable(self.ns, "GripperState", False, varianttype=ua.VariantType.Boolean)
+        self.fault_active_node = await robot_object.add_variable(self.ns, "FaultActive", False, varianttype=ua.VariantType.Boolean)
 
         # Conveyor Belt Nodes
         self.conveyor_running = await conveyor_object.add_variable(self.ns, "Running", True, varianttype=ua.VariantType.Boolean)
@@ -661,6 +666,7 @@ class ProductionLineController(StationOperationDispatcher):
         await self.exec_node.set_writable()
         await self.done_node.set_writable()
         await self.gripper_node.set_writable()
+        await self.fault_active_node.set_writable()
         await self.conveyor_running.set_writable()
         await self.conveyor_speed.set_writable()
         await self.sensor_node.set_writable()
@@ -670,26 +676,35 @@ class ProductionLineController(StationOperationDispatcher):
         """Publish initial conveyor state once so external systems receive startup values."""
         running = await self.conveyor_running.get_value()
         speed = await self.conveyor_speed.get_value()
+        fault_active = bool(await self.fault_active_node.get_value())
 
         await self.publish_conveyor_running(bool(running))
         await self.publish_conveyor_speed(float(speed))
         await self.publish_box_detected(False)
         await self.publish_robot_moving(False)
+        await self.publish_fault_active(fault_active)
 
 
     async def publish_conveyor_running(self, running):
         if running != self.last_running_state:
-            topic_running = f"simulation/{self.station_id}/isRunning"
-            payload = json.dumps({"isRunning": running})
+            topic_running = f"factory/conveyors/{self.conveyor_id}/telemetry/isRunning"
+            payload = json.dumps({
+                "value": running,
+                "stationId": self.station_id,
+                "conveyorId": self.conveyor_id,
+            })
             await self.mqtt.publish(topic_running, payload, qos=1, retain=True)
             self.last_running_state = running
 
     async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
-            topic_box = f"simulation/{self.station_id}/boxDetected"
+            topic_box = f"factory/conveyors/{self.conveyor_id}/telemetry/boxDetected"
             self.box_event_sequence += 1
             payload = {
+                "value": box_detected,
                 "boxDetected": box_detected,
+                "stationId": self.station_id,
+                "conveyorId": self.conveyor_id,
                 "eventId": (f"{self.station_id}:{self.server_instance_id}:box:{self.box_event_sequence:06d}"),
             }         
             await self.mqtt.publish(topic_box, json.dumps(payload), qos=1, retain=True)
@@ -697,15 +712,23 @@ class ProductionLineController(StationOperationDispatcher):
 
     async def publish_conveyor_speed(self, speed):
         if speed != self.last_speed_state:
-            topic_speed = f"simulation/{self.station_id}/currentSpeed"
-            payload = json.dumps({"currentSpeed": speed})
+            topic_speed = f"factory/conveyors/{self.conveyor_id}/telemetry/currentSpeed"
+            payload = json.dumps({
+                "value": speed,
+                "stationId": self.station_id,
+                "conveyorId": self.conveyor_id,
+            })
             await self.mqtt.publish(topic_speed, payload, qos=1, retain=True)
             self.last_speed_state = speed
     
     async def publish_robot_moving(self, moving):
         if moving != self.last_executing_state:
-            topic_moving = f"simulation/{self.station_id}/isMoving"
-            payload = json.dumps({"isMoving": moving})
+            topic_moving = f"factory/robots/{self.robot_id}/telemetry/isMoving"
+            payload = json.dumps({
+                "value": moving,
+                "stationId": self.station_id,
+                "robotId": self.robot_id,
+            })
             await self.mqtt.publish(topic_moving, payload, qos=1, retain=True)
             self.last_executing_state = moving
     
@@ -720,6 +743,30 @@ class ProductionLineController(StationOperationDispatcher):
         }
         await self.mqtt.publish(topic, json.dumps(payload), qos=1, retain=True)
 
+    async def publish_fault_active(self, fault_active: bool) -> None:
+        if fault_active == self.last_fault_active:
+            return
+
+        timestamp_ns = time.time_ns()
+        topic = f"factory/robots/{self.robot_id}/telemetry/faultActive"
+        payload = {
+            "value": fault_active,
+            "stationId": self.station_id,
+            "robotId": self.robot_id,
+            "faultActive": fault_active,
+            "eventId": f"{self.robot_id}-faultActive-{timestamp_ns}",
+            "timestampNs": timestamp_ns,
+        }
+
+        await self.mqtt.publish(
+            topic,
+            json.dumps(payload),
+            qos=1,
+            retain=True,
+        )
+
+        self.last_fault_active = fault_active
+
     async def run_robot_readiness_monitor(self, mqtt_listener_ready: asyncio.Event) -> None:
         await mqtt_listener_ready.wait()
         await self.publish_station_status()
@@ -731,6 +778,20 @@ class ProductionLineController(StationOperationDispatcher):
                 self.robot_ready.set()
                 await self.publish_station_status()
                 return
+
+            await asyncio.sleep(self.ROBOT_STATUS_POLL_SECONDS)
+
+    async def run_fault_monitor(self) -> None:
+        """Forward changes from the OPC UA fault node to MQTT/AAS."""
+        while True:
+            try:
+                fault_active = bool(await self.fault_active_node.get_value())
+                await self.publish_fault_active(fault_active)
+            except Exception:
+                logging.exception(
+                    "[%s] Failed to monitor robot fault state",
+                    self.station_id,
+                )
 
             await asyncio.sleep(self.ROBOT_STATUS_POLL_SECONDS)
 
@@ -1116,9 +1177,10 @@ async def main():
                     idx,
                     factory_object,
                     mqtt_client,
-                    server_instance_id,
-                    robot_id=robot_id,
-                )
+                server_instance_id,
+                robot_id=robot_id,
+                conveyor_id=s_id.replace("Station_", "Conveyor_", 1),
+            )
                 await controller.initialize_nodes()
                 await controller.publish_initial_state()
                 controllers_by_station[s_id] = controller
@@ -1139,6 +1201,7 @@ async def main():
                 tasks.append(controller.run_cyclical_logic())
                 tasks.append(controller.run_operation_worker())
                 tasks.append(controller.run_robot_readiness_monitor(mqtt_listener_ready))
+                tasks.append(controller.run_fault_monitor())
 
             try:
                 await asyncio.gather(*tasks)
