@@ -464,7 +464,15 @@ class ProductionLineController(StationOperationDispatcher):
     ):
         self.station_id = station_id
         self.robot_id = robot_id or station_id.replace("Station_", "Robot_", 1)
+        self.robot_asset_id = (
+            f"urn:agent-aas:asset-instance:"
+            f"{self.robot_id.lower().replace('_', '')}"
+        )
         self.conveyor_id = conveyor_id or station_id.replace("Station_", "Conveyor_", 1)
+        self.conveyor_asset_id = (
+            f"urn:agent-aas:asset-instance:"
+            f"{self.conveyor_id.lower().replace('_', '')}"
+        )
         self.ns = namespace_idx
         self.folder = idx_folder
         self.mqtt = mqtt_client
@@ -484,6 +492,7 @@ class ProductionLineController(StationOperationDispatcher):
         self.present_sample_count = 0
         self.clear_started_at = None
         self.box_event_sequence = 0
+        self.telemetry_event_sequence = 0
 
         # State caches to enforce Report-by-Exception (no duplicate spam)
         self.last_running_state = None
@@ -687,96 +696,62 @@ class ProductionLineController(StationOperationDispatcher):
 
     async def publish_conveyor_running(self, running):
         if running != self.last_running_state:
-            topic_running = f"factory/conveyors/{self.conveyor_id}/telemetry/isRunning"
-            payload = json.dumps({
-                "value": running,
-                "stationId": self.station_id,
-                "conveyorId": self.conveyor_id,
-            })
-            await self.mqtt.publish(topic_running, payload, qos=1, retain=True)
+            await self.publish_telemetry(
+                asset_id=self.conveyor_asset_id,
+                semantic_id="urn:agent-aas:semantics:IsRunning:1",
+                value=running,
+            )
             self.last_running_state = running
 
     async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
-            topic_box = f"factory/conveyors/{self.conveyor_id}/telemetry/boxDetected"
             self.box_event_sequence += 1
-            payload = {
-                "value": box_detected,
-                "boxDetected": box_detected,
-                "stationId": self.station_id,
-                "conveyorId": self.conveyor_id,
-                "eventId": (f"{self.station_id}:{self.server_instance_id}:box:{self.box_event_sequence:06d}"),
-            }         
-            await self.mqtt.publish(topic_box, json.dumps(payload), qos=1, retain=True)
+            await self.publish_telemetry(
+                asset_id=self.conveyor_asset_id,
+                semantic_id="urn:agent-aas:semantics:WorkpiecePresent:1",
+                value=box_detected,
+            )
             self.last_box_state = box_detected
 
     async def publish_conveyor_speed(self, speed):
         if speed != self.last_speed_state:
-            topic_speed = f"factory/conveyors/{self.conveyor_id}/telemetry/currentSpeed"
-            payload = json.dumps({
-                "value": speed,
-                "stationId": self.station_id,
-                "conveyorId": self.conveyor_id,
-            })
-            await self.mqtt.publish(topic_speed, payload, qos=1, retain=True)
+            await self.publish_telemetry(
+                asset_id=self.conveyor_asset_id,
+                semantic_id="urn:agent-aas:semantics:ActualConveyorSpeed:1",
+                value=speed,
+            )
             self.last_speed_state = speed
     
     async def publish_robot_moving(self, moving):
         if moving != self.last_executing_state:
-            topic_moving = f"factory/robots/{self.robot_id}/telemetry/isMoving"
-            payload = json.dumps({
-                "value": moving,
-                "stationId": self.station_id,
-                "robotId": self.robot_id,
-            })
-            await self.mqtt.publish(topic_moving, payload, qos=1, retain=True)
+            await self.publish_telemetry(
+                asset_id=self.robot_asset_id,
+                semantic_id="urn:agent-aas:semantics:IsMoving:1",
+                value=moving,
+            )
             self.last_executing_state = moving
-    
-    async def publish_station_status(self) -> None:
-        topic = f"simulation/{self.station_id}/status"
-        payload = {
-            "stationId": self.station_id,
-            "online": True,
-            "robotReady": self.robot_ready.is_set(),
-            "serverInstanceId": self.server_instance_id,
-            "timestamp": time.time(),
-        }
-        await self.mqtt.publish(topic, json.dumps(payload), qos=1, retain=True)
 
     async def publish_fault_active(self, fault_active: bool) -> None:
         if fault_active == self.last_fault_active:
             return
 
         timestamp_ns = time.time_ns()
-        topic = f"factory/robots/{self.robot_id}/telemetry/faultActive"
-        payload = {
-            "value": fault_active,
-            "stationId": self.station_id,
-            "robotId": self.robot_id,
-            "faultActive": fault_active,
-            "eventId": f"{self.robot_id}-faultActive-{timestamp_ns}",
-            "timestampNs": timestamp_ns,
-        }
-
-        await self.mqtt.publish(
-            topic,
-            json.dumps(payload),
-            qos=1,
-            retain=True,
+        await self.publish_telemetry(
+            asset_id=self.robot_asset_id,
+            semantic_id="urn:agent-aas:semantics:FaultActive:1",
+            value=fault_active,
         )
 
         self.last_fault_active = fault_active
 
     async def run_robot_readiness_monitor(self, mqtt_listener_ready: asyncio.Event) -> None:
         await mqtt_listener_ready.wait()
-        await self.publish_station_status()
 
         while not self.robot_ready.is_set():
             done = bool(await self.done_node.get_value())
             execute = bool(await self.exec_node.get_value())
             if done and not execute:
                 self.robot_ready.set()
-                await self.publish_station_status()
                 return
 
             await asyncio.sleep(self.ROBOT_STATUS_POLL_SECONDS)
@@ -829,6 +804,28 @@ class ProductionLineController(StationOperationDispatcher):
             payload["error"] = error
         json_payload = json.dumps(payload)
         await self.mqtt.publish(topic, json_payload, qos=1, retain=False)
+
+
+    async def publish_telemetry(self, asset_id: str, semantic_id: str, value: Any) -> None:
+        self.telemetry_event_sequence += 1
+        payload = {
+            "assetId": asset_id,
+            "semanticId": semantic_id,
+            "value": value,
+            "eventId": (
+                f"{asset_id}:"
+                f"{self.server_instance_id}:"
+                f"{self.telemetry_event_sequence:08d}"
+            ),
+        }
+
+        await self.mqtt.publish(
+            "oip/telemetry",
+            json.dumps(payload),
+            qos=1,
+            retain=False,
+        )
+
 
     async def stop_conveyor_for_box(self):
             async with self.conveyor_lock:
@@ -1091,29 +1088,6 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
     else:
         await process_messages(messages_source)
 
-async def publish_station_manifests(mqtt_client: MqttClient) -> None:
-    """Publish retained station manifests for automatic gateway discovery."""
-    manifest_path = os.getenv(
-        "STATION_MANIFESTS_FILE",
-        os.path.join("basyx-setup", "mqtt-aas-bridge", "manifests.json"),
-    )
-    if not os.path.exists(manifest_path):
-        logging.warning("Station manifest file not found: %s", manifest_path)
-        return
-
-    with open(manifest_path, "r", encoding="utf-8") as manifest_file:
-        manifests = json.load(manifest_file)
-    if not isinstance(manifests, dict):
-        raise ValueError("Station manifest file must contain an object keyed by station ID")
-
-    for station_id, manifest in manifests.items():
-        if not isinstance(manifest, dict):
-            continue
-        normalized_station = str(station_id).strip().lower()
-        topic = f"factory/{normalized_station}/manifest"
-        await mqtt_client.publish(topic, json.dumps(manifest), qos=1, retain=True)
-        logging.info("Published retained station manifest to %s", topic)
-
 async def main():
     server = Server()
     # Keep OIP client sessions alive across long simulation runs.
@@ -1169,7 +1143,6 @@ async def main():
                 qos=1,
                 retain=True,
             )
-            await publish_station_manifests(mqtt_client)
             for s_id in station_ids:
                 robot_id = s_id.replace("Station_", "Robot_", 1)
                 controller = ProductionLineController(
