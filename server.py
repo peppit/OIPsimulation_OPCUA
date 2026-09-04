@@ -102,13 +102,22 @@ class StationOperationDispatcher:
 
         routes_by_robot = {
             "robot_01": {
-                ("station_01", "Conveyor1", "Pallet1"):
+                (
+                    "urn:agent-aas:asset-instance:conveyor01",
+                    "urn:agent-aas:entity:oip-factory01:pallet01",
+                ):
                     station_01_sequence,
             },
             "robot_02": {
-                ("station_01", "Conveyor1", "Pallet1"):
+                (
+                    "urn:agent-aas:asset-instance:conveyor01",
+                    "urn:agent-aas:entity:oip-factory01:pallet01",
+                ):
                     station_01_sequence,
-                ("station_02", "Conveyor2", "Pallet1"):
+                (
+                    "urn:agent-aas:asset-instance:conveyor02",
+                    "urn:agent-aas:entity:oip-factory01:pallet01",
+                ):
                     station_02_sequence,
             },
         }
@@ -296,7 +305,7 @@ class StationOperationDispatcher:
         if not isinstance(move_box_routes, dict):
             raise ValueError("moveBox route configuration is invalid")
 
-        route_key = (destination.station_id.strip().lower(), source_position, target_position)
+        route_key = (source_position, target_position)
         sequence = move_box_routes.get(route_key)
 
         if sequence is None:
@@ -919,7 +928,13 @@ class ProductionLineController(StationOperationDispatcher):
             await self.publish_robot_moving(is_currently_busy)
             
 
-async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_ready=None, controllers_by_robot=None):
+async def mqtt_operation_listener(
+    mqtt_client,
+    controllers_by_station,
+    listener_ready=None,
+    controllers_by_robot=None,
+    controllers_by_asset=None,
+):
     operation_topics = (
         "simulation/+/operations/+",
         "simulation/robots/+/operations/+",
@@ -935,6 +950,11 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
             controller.robot_id: controller
             for controller in controllers_by_station.values()
         }
+    if controllers_by_asset is None:
+        controllers_by_asset = {
+            controller.conveyor_asset_id: controller
+            for controller in controllers_by_station.values()
+        }
     controllers_by_station_ci = {
         station_id.lower(): controller
         for station_id, controller in controllers_by_station.items()
@@ -942,6 +962,10 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
     controllers_by_robot_ci = {
         robot_id.lower(): controller
         for robot_id, controller in controllers_by_robot.items()
+    }
+    controllers_by_asset_ci = {
+        asset_id.casefold(): controller
+        for asset_id, controller in controllers_by_asset.items()
     }
 
     def _resolve_target(topic_parts):
@@ -1015,33 +1039,9 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
                 continue
 
             envelope = _payload_envelope(message.payload)
-            station_id = envelope.get("stationId")
-            if not isinstance(station_id, str) or not station_id.strip():
-                await _reject_robot_request(
-                    None,
-                    operation_name,
-                    envelope,
-                    route_id,
-                    "stationId is required for robot-routed operations",
-                )
-                continue
-            station_id = station_id.strip()
-            destination = controllers_by_station.get(station_id)
-            if destination is None:
-                destination = controllers_by_station_ci.get(station_id.lower())
-            if destination is None:
-                await _reject_robot_request(
-                    None,
-                    operation_name,
-                    envelope,
-                    route_id,
-                    f"Unknown destination station '{station_id}'",
-                )
-                continue
-
             if operation_name.strip().lower() not in StationOperationDispatcher.ROBOT_OPERATIONS:
                 await _reject_robot_request(
-                    destination,
+                    None,
                     operation_name,
                     envelope,
                     route_id,
@@ -1055,7 +1055,7 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
                 or payload_robot_id.lower() != route_id.lower()
             ):
                 await _reject_robot_request(
-                    destination,
+                    None,
                     operation_name,
                     envelope,
                     route_id,
@@ -1068,13 +1068,37 @@ async def mqtt_operation_listener(mqtt_client, controllers_by_station, listener_
                 executor = controllers_by_robot_ci.get(route_id.lower())
             if executor is None:
                 await _reject_robot_request(
-                    destination,
+                    None,
                     operation_name,
                     envelope,
                     route_id,
                     f"Unknown robot '{route_id}'",
                 )
                 continue
+
+            destination = executor
+            if operation_name.strip().lower() == "movebox":
+                params = envelope.get("params", {})
+                source_identity = params.get("SourcePosition") if isinstance(params, dict) else None
+                if not isinstance(source_identity, str) or not source_identity.strip():
+                    await _reject_robot_request(
+                        None,
+                        operation_name,
+                        envelope,
+                        route_id,
+                        "SourcePosition is required for moveBox",
+                    )
+                    continue
+                destination = controllers_by_asset_ci.get(source_identity.strip().casefold())
+                if destination is None:
+                    await _reject_robot_request(
+                        None,
+                        operation_name,
+                        envelope,
+                        route_id,
+                        f"Unknown source asset '{source_identity}'",
+                    )
+                    continue
 
             await destination.operation_queue.put((operation_name, message.payload, executor))
             
@@ -1117,6 +1141,7 @@ async def main():
     ]
     controllers_by_station = {}
     controllers_by_robot = {}
+    controllers_by_asset = {}
     server_instance_id = str(uuid.uuid4())
     server_status_topic = "simulation/server/status"
     server_offline_payload = json.dumps({
@@ -1158,6 +1183,7 @@ async def main():
                 await controller.publish_initial_state()
                 controllers_by_station[s_id] = controller
                 controllers_by_robot[robot_id] = controller
+                controllers_by_asset[controller.conveyor_asset_id] = controller
 
             print(f"\n[INFO] Unified OPC UA + MQTT Gateway Environment Online!")
             mqtt_listener_ready = asyncio.Event()
@@ -1167,6 +1193,7 @@ async def main():
                     controllers_by_station,
                     listener_ready=mqtt_listener_ready,
                     controllers_by_robot=controllers_by_robot,
+                    controllers_by_asset=controllers_by_asset,
                 )
             ]
 
