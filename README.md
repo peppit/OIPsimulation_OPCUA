@@ -100,7 +100,7 @@ Use a correlated JSON envelope. Keep its `operation` value consistent with the o
 }
 ```
 
-`requestId` enables acknowledgement messages. `runId` is optional and is used to group latency samples in `OIP_server_logs.csv`. `robotId` is optional on a station-routed request; on a robot-routed request, if supplied, it must match the robot in the topic.
+`requestId` enables acknowledgement messages. `runId` is optional and is used to group timing samples in `OIP_server_logs.csv`. `robotId` is optional on a station-routed request; on a robot-routed request, if supplied, it must match the robot in the topic.
 
 Every `moveBox` request must use the exact source-asset and target-entity URNs configured in the route matrix below. For a robot-routed `moveBox`, the server also uses `SourcePosition` to find the station whose pending box detection will be consumed. `stationId` is not used to select that station, but, if supplied, it must match the station resolved from `SourcePosition`. For a robot-routed `moveToHome`, the destination is the selected robot's own station and any supplied `stationId` must match it.
 
@@ -115,20 +115,18 @@ Every `moveBox` request must use the exact source-asset and target-entity URNs c
 
 For backwards compatibility, station-routed conveyor requests can also use scalar payloads such as `true` or `1.0`, or a parameter object without the outer request envelope. Scalar requests do not produce replies because they have no `requestId`.
 
-The built-in `moveBox` route matrix is:
+Each configured station automatically gets one built-in `moveBox` route:
 
-| Executor | Destination | Source | Target |
-| --- | --- | --- | --- |
-| `Robot_01` | `Station_01` | `urn:agent-aas:asset-instance:conveyor01` | `urn:agent-aas:entity:oip-factory01:pallet01` |
-| `Robot_02` | `Station_01` | `urn:agent-aas:asset-instance:conveyor01` | `urn:agent-aas:entity:oip-factory01:pallet01` |
-| `Robot_02` | `Station_02` | `urn:agent-aas:asset-instance:conveyor02` | `urn:agent-aas:entity:oip-factory01:pallet01` |
+| Executor | Destination | Source | Target | Sequence |
+| --- | --- | --- | --- | --- |
+| `Robot_N` | `Station_N` | `urn:agent-aas:asset-instance:conveyorN` | `urn:agent-aas:entity:oip-factory01:palletN` | `station_01_sequence` |
 
-The destination shown above is resolved from the source asset. Other robot, source, or target combinations fail unless a route is added to `_build_robot_sequences()`. A new source asset must also be registered in `controllers_by_asset` so robot-routed requests can resolve its station.
+The route is generated from each controller's `conveyor_asset_id`, so every robot number uses the same `station_01_sequence`; no per-robot route entry is required. The destination is resolved from the source asset. Other source or target combinations fail unless a route is added to `_build_robot_sequences()`.
 
-Example using Mosquitto to assign `Robot_02` to a box at `Station_01`:
+Example using Mosquitto to assign `Robot_02` to a box at `Station_02`:
 
 ```powershell
-mosquitto_pub -h localhost -t "simulation/robots/Robot_02/operations/moveBox" -m '{"requestId":"request-123","stationId":"Station_01","robotId":"Robot_02","operation":"moveBox","params":{"SourcePosition":"urn:agent-aas:asset-instance:conveyor01","TargetPosition":"urn:agent-aas:entity:oip-factory01:pallet01"}}'
+mosquitto_pub -h localhost -t "simulation/robots/Robot_02/operations/moveBox" -m '{"requestId":"request-123","stationId":"Station_02","robotId":"Robot_02","operation":"moveBox","params":{"SourcePosition":"urn:agent-aas:asset-instance:conveyor02","TargetPosition":"urn:agent-aas:entity:oip-factory01:pallet02"}}'
 ```
 
 ## MQTT output
@@ -202,7 +200,7 @@ The laser sensor is sampled every `0.05` seconds. A box is present when its dist
 1. Creates one pending pick token.
 2. Stops the conveyor and applies speed `0.0`.
 3. Publishes the corresponding conveyor telemetry changes.
-4. Records detection time `t0` for latency measurement.
+4. Records `t0` immediately before publishing `WorkpiecePresent=true`.
 
 The sensor must remain outside the detection range for `0.25` seconds before the box state clears and detection is re-armed. The requested conveyor running state and speed are remembered and restored when it is safe to restart.
 
@@ -214,15 +212,15 @@ During a robot command, the server waits for this `Done` handshake:
 
 Robot operations using the same executor are serialized by that robot's lock, including when `Robot_02` services both stations.
 
-## Latency log
+## OIP timing log
 
-For `moveBox`, a confirmed box detection supplies `t0` and operation invocation supplies `t4`. When both are available, the server appends a row to `OIP_server_logs.csv`:
+For `moveBox`, `t0` is recorded immediately before the server publishes the `WorkpiecePresent=true` (`Box_present`) telemetry. `t5` is recorded when the server first observes `Done=false`, indicating that robot execution has started. Both timestamps are Unix epoch time in integer microseconds. The server appends one correlated row per accepted `moveBox` request to `OIP_server_logs.csv`:
 
 ```text
-request_id,run_id,station_id,sample_in_run,t0_unix,t4_unix,status
+request_id,run_id,station_id,robot_id,sample_in_run,t0_unix_us,t5_unix_us
 ```
 
-The sample counter resets when `runId` changes. At startup, an existing CSV must have exactly this header; otherwise the server raises an error and asks you to move or rename the old log.
+The sample counter resets when `runId` changes. Only the first execution start in a `moveBox` sequence is logged. At startup, an existing CSV must have exactly this header; otherwise the server raises an error and asks you to move or rename the old log.
 
 ## Tests
 

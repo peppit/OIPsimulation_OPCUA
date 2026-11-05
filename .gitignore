@@ -3,6 +3,8 @@ __pycache__/
 OIP_server_logs.csv
 PUB_messages_latency.log
 PUB_messages.log
+simulation_run_events.csv
+simulation_run_intervals.csv
 sensor_logs.log
 .venv/
 venv/

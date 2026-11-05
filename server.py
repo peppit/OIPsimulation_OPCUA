@@ -1,5 +1,6 @@
 import asyncio
 import csv
+from datetime import datetime, timezone
 import logging
 import json
 import os
@@ -17,7 +18,202 @@ logging.getLogger("asyncua.server.standard_address_space").setLevel(logging.WARN
 logging.getLogger("asyncua.server.uaprocessor").setLevel(logging.WARNING)
 
 OperationHandler = Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]
+RobotExecutionStartedCallback = Callable[[int], Awaitable[None]]
 
+class ExperimentTiming:
+    RUN_EVENTS_FILE = os.path.join(
+        os.path.dirname(__file__),
+        "simulation_run_events.csv",
+    )
+    RUN_INTERVALS_FILE = os.path.join(
+        os.path.dirname(__file__),
+        "simulation_run_intervals.csv",
+    )
+
+    def __init__(self, target_pickups: int = 240):
+        self.run_id = str(uuid.uuid4())
+        self.target_pickups = target_pickups
+        self.first_detection_unix_us = None
+        self.completed_pickups = 0
+        self.last_completed_pickup_unix_us = None
+        self.run_closed = False
+        self.lock = asyncio.Lock()
+
+    @staticmethod
+    def _utc_iso(timestamp_unix_us: int) -> str:
+        return (
+            datetime.fromtimestamp(
+                timestamp_unix_us / 1_000_000,
+                tz=timezone.utc,
+            )
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+
+    def _append_run_event(self, event: str, timestamp_unix_us: int) -> None:
+        """Append and flush a durable boundary for CPU/memory filtering."""
+        try:
+            with open(
+                self.RUN_EVENTS_FILE,
+                "a",
+                newline="",
+                encoding="utf-8",
+            ) as csv_file:
+                writer = csv.writer(csv_file)
+                if csv_file.tell() == 0:
+                    writer.writerow([
+                        "run_id",
+                        "event",
+                        "timestamp_unix_us",
+                        "timestamp_utc",
+                        "completed_pickups",
+                        "target_pickups",
+                    ])
+                writer.writerow([
+                    self.run_id,
+                    event,
+                    timestamp_unix_us,
+                    self._utc_iso(timestamp_unix_us),
+                    self.completed_pickups,
+                    self.target_pickups,
+                ])
+                csv_file.flush()
+                os.fsync(csv_file.fileno())
+        except OSError:
+            # Measurement logging must not stop the simulation itself.
+            logging.exception("Could not append simulation run event")
+
+    def _append_run_interval(
+        self,
+        status: str,
+        shutdown_unix_us: Optional[int] = None,
+    ) -> None:
+        """Write one analysis-ready interval for a completed or stopped batch."""
+        measurement_end_unix_us = self.last_completed_pickup_unix_us
+        try:
+            with open(
+                self.RUN_INTERVALS_FILE,
+                "a",
+                newline="",
+                encoding="utf-8",
+            ) as csv_file:
+                writer = csv.writer(csv_file)
+                if csv_file.tell() == 0:
+                    writer.writerow([
+                        "run_id",
+                        "measurement_start_unix_us",
+                        "measurement_start_utc",
+                        "measurement_end_unix_us",
+                        "measurement_end_utc",
+                        "server_shutdown_unix_us",
+                        "server_shutdown_utc",
+                        "completed_pickups",
+                        "target_pickups",
+                        "status",
+                    ])
+                writer.writerow([
+                    self.run_id,
+                    self.first_detection_unix_us,
+                    self._utc_iso(self.first_detection_unix_us),
+                    measurement_end_unix_us or "",
+                    (
+                        self._utc_iso(measurement_end_unix_us)
+                        if measurement_end_unix_us is not None
+                        else ""
+                    ),
+                    shutdown_unix_us or "",
+                    (
+                        self._utc_iso(shutdown_unix_us)
+                        if shutdown_unix_us is not None
+                        else ""
+                    ),
+                    self.completed_pickups,
+                    self.target_pickups,
+                    status,
+                ])
+                csv_file.flush()
+                os.fsync(csv_file.fileno())
+        except OSError:
+            # Measurement logging must not stop the simulation itself.
+            logging.exception("Could not append simulation run interval")
+
+    async def record_first_detection(self, timestamp_unix_us: int) -> None:
+        async with self.lock:
+            if self.first_detection_unix_us is None:
+                self.first_detection_unix_us = timestamp_unix_us
+                self._append_run_event("simulation_started", timestamp_unix_us)
+                logging.info(
+                    "EXPERIMENT START run_id=%s first_detection_unix_us=%d",
+                    self.run_id,
+                    timestamp_unix_us,
+                )
+
+    async def record_completed_pickup(self) -> None:
+        async with self.lock:
+            self.completed_pickups += 1
+            self.last_completed_pickup_unix_us = time.time_ns() // 1_000
+            self._append_run_event(
+                "pickup_completed",
+                self.last_completed_pickup_unix_us,
+            )
+
+            logging.info(
+                "Completed pickup %d/%d",
+                self.completed_pickups,
+                self.target_pickups,
+            )
+
+            # Use == so the end timestamp is written only once.
+            if self.completed_pickups == self.target_pickups:
+                self.run_closed = True
+                self._append_run_event(
+                    "simulation_completed",
+                    self.last_completed_pickup_unix_us,
+                )
+                self._append_run_interval("completed")
+
+                elapsed_us = (
+                    self.last_completed_pickup_unix_us
+                    - self.first_detection_unix_us
+                )
+
+                logging.info(
+                    "EXPERIMENT END last_completed_pickup_unix_us=%d "
+                    "elapsed_seconds=%.6f",
+                    self.last_completed_pickup_unix_us,
+                    elapsed_us / 1_000_000,
+                )
+
+    async def record_interrupted(self) -> None:
+        """Close a started run when the server exits before the target."""
+        async with self.lock:
+            if self.first_detection_unix_us is None or self.run_closed:
+                return
+
+            interrupted_unix_us = time.time_ns() // 1_000
+            self.run_closed = True
+            self._append_run_event(
+                "simulation_interrupted",
+                interrupted_unix_us,
+            )
+            interval_status = (
+                "interrupted"
+                if self.last_completed_pickup_unix_us is not None
+                else "no_completed_pickups"
+            )
+            self._append_run_interval(
+                interval_status,
+                shutdown_unix_us=interrupted_unix_us,
+            )
+            logging.info(
+                "EXPERIMENT INTERRUPTED run_id=%s interrupted_unix_us=%d "
+                "last_completed_pickup_unix_us=%s completed_pickups=%d/%d",
+                self.run_id,
+                interrupted_unix_us,
+                self.last_completed_pickup_unix_us,
+                self.completed_pickups,
+                self.target_pickups,
+            )
 
 def log_failed_opcua_writes(event: Any, _service: Any) -> None:
     """Log the NodeId, value, and status for writes rejected by the OPC UA server."""
@@ -88,42 +284,23 @@ class StationOperationDispatcher:
             {"action": "execute_command", "cmd": 3},
         ]
 
-        station_02_sequence = [
-            {"action": "execute_command", "cmd": 5},
-            {"action": "set_gripper", "value": True},
-            {"action": "sleep", "seconds": 1.0},
-            {"action": "execute_command", "cmd": 6},
-            {"action": "execute_command", "cmd": 3},
-            {"action": "execute_command", "cmd": 4},
-            {"action": "set_gripper", "value": False},
-            {"action": "sleep", "seconds": 1.5},
-            {"action": "execute_command", "cmd": 3},
-        ]
-
-        routes_by_robot = {
-            "robot_01": {
-                (
-                    "urn:agent-aas:asset-instance:conveyor01",
-                    "urn:agent-aas:entity:oip-factory01:pallet01",
-                ):
-                    station_01_sequence,
-            },
-            "robot_02": {
-                (
-                    "urn:agent-aas:asset-instance:conveyor01",
-                    "urn:agent-aas:entity:oip-factory01:pallet01",
-                ):
-                    station_01_sequence,
-                (
-                    "urn:agent-aas:asset-instance:conveyor02",
-                    "urn:agent-aas:entity:oip-factory01:pallet01",
-                ):
-                    station_02_sequence,
-            },
+        # Every station has the same robot program. Build the route from this
+        # controller's conveyor instead of maintaining a table per robot ID.
+        # Consequently Robot_01, Robot_02, ... Robot_N all use this sequence.
+        station_number = self.station_id.lower().replace("_", "").removeprefix("station")
+        local_pallet_entity_id = (
+            "urn:agent-aas:entity:oip-factory01:"
+            f"pallet{station_number}"
+        )
+        local_move_box_routes = {
+            (
+                self.conveyor_asset_id,
+                local_pallet_entity_id,
+            ): station_01_sequence,
         }
 
         return {
-            "moveBox": routes_by_robot.get(self.robot_id.lower(), {}),
+            "moveBox": local_move_box_routes,
             "moveToHome": [
                 {"action": "execute_command", "cmd": 0},
             ],
@@ -321,6 +498,11 @@ class StationOperationDispatcher:
                 f"moveBox rejected for {destination.station_id}: "
                 "no confirmed unconsumed box detection"
             )
+        if destination.pending_t0_unix_us is None:
+            raise ValueError(
+                f"moveBox rejected for {destination.station_id}: "
+                "the pending box detection has no t0 publish timestamp"
+            )
 
         destination.pending_box_pick = False
 
@@ -335,15 +517,24 @@ class StationOperationDispatcher:
         )
 
 
-        # t4: when moveBox is invoked in this server.
-        await destination._capture_t4_and_log_pair(
-            envelope.get("requestId"),
-            envelope.get("runId"),
-        )
+        t0_unix_us = destination.pending_t0_unix_us
+        destination.pending_t0_unix_us = None
+
+        async def log_robot_execution_start(t5_unix_us: int) -> None:
+            await destination._log_timing_pair(
+                envelope.get("requestId"),
+                envelope.get("runId"),
+                executor.robot_id,
+                t0_unix_us,
+                t5_unix_us,
+            )
 
         async with executor.robot_lock:
-            await executor._execute_robot_sequence(sequence)
-
+            await executor._execute_robot_sequence(
+                sequence,
+                on_first_execution_started=log_robot_execution_start,
+            )
+        await destination.experiment_timing.record_completed_pickup()
         await destination.restart_conveyor_if_safe()
 
     
@@ -362,14 +553,23 @@ class StationOperationDispatcher:
         await self.restart_conveyor_if_safe()
             
 
-    async def _execute_robot_sequence(self, sequence: List[Dict[str, Any]]) -> None:
+    async def _execute_robot_sequence(
+        self,
+        sequence: List[Dict[str, Any]],
+        on_first_execution_started: Optional[RobotExecutionStartedCallback] = None,
+    ) -> None:
+        execution_started_callback = on_first_execution_started
         await self.publish_robot_moving(True)
         try:
             for step in sequence:
                 action = step.get("action")
 
                 if action == "execute_command":
-                    await self._execute_robot_command(int(step["cmd"]))
+                    await self._execute_robot_command(
+                        int(step["cmd"]),
+                        on_execution_started=execution_started_callback,
+                    )
+                    execution_started_callback = None
                     continue
 
                 if action == "set_gripper":
@@ -385,7 +585,11 @@ class StationOperationDispatcher:
             await self.exec_node.write_value(False)
             await self.publish_robot_moving(False)
 
-    async def _execute_robot_command(self, command: int) -> None:
+    async def _execute_robot_command(
+        self,
+        command: int,
+        on_execution_started: Optional[RobotExecutionStartedCallback] = None,
+    ) -> None:
         # Done is a status output owned by the OIP robot. Wait until the robot
         # reports idle before issuing a new rising edge on Execute.
         await self._wait_for_robot_done(
@@ -407,12 +611,14 @@ class StationOperationDispatcher:
             # OIP writes Done=False when it accepts the command and begins
             # moving. This prevents a stale Done=True value from being treated
             # as immediate command completion.
-            await self._wait_for_robot_done(
+            t5_unix_us = await self._wait_for_robot_done(
                 expected=False,
                 timeout=self.ROBOT_START_TIMEOUT_SECONDS,
                 phase="start",
                 command=command,
             )
+            if on_execution_started is not None:
+                await on_execution_started(t5_unix_us)
         finally:
             await self.exec_node.write_value(False)
 
@@ -429,13 +635,14 @@ class StationOperationDispatcher:
         timeout: float,
         phase: str,
         command: int,
-    ) -> None:
+    ) -> int:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
 
         while True:
             done = bool(await self.done_node.get_value())
             if done == expected:
+                observed_unix_us = time.time_ns() // 1_000
                 logging.info(
                     "[%s] Robot command=%s phase=%s Done=%s",
                     self.station_id,
@@ -443,7 +650,7 @@ class StationOperationDispatcher:
                     phase,
                     done,
                 )
-                return
+                return observed_unix_us
 
             remaining = deadline - loop.time()
             if remaining <= 0:
@@ -468,6 +675,7 @@ class ProductionLineController(StationOperationDispatcher):
         idx_folder,
         mqtt_client,
         server_instance_id,
+        experiment_timing,
         robot_id=None,
         conveyor_id=None,
     ):
@@ -520,9 +728,10 @@ class ProductionLineController(StationOperationDispatcher):
         self.conveyor_speed = None
         self.sensor_node = None
 
-        self.logged_latency_samples = 0
+        self.experiment_timing = experiment_timing
+        self.logged_timing_samples = 0
         self.current_run_id = None
-        self.pending_t0 = None
+        self.pending_t0_unix_us = None
         self.log_lock = asyncio.Lock()
         self.log_csv_path = os.path.join(os.path.dirname(__file__), "OIP_server_logs.csv")
         self._ensure_log_file_header()
@@ -536,10 +745,10 @@ class ProductionLineController(StationOperationDispatcher):
             "request_id",
             "run_id",
             "station_id",
+            "robot_id",
             "sample_in_run",
-            "t0_unix",
-            "t4_unix",
-            "status",
+            "t0_unix_us",
+            "t5_unix_us",
         ]
 
         needs_header = (not os.path.exists(self.log_csv_path)) or os.path.getsize(self.log_csv_path) == 0
@@ -569,22 +778,20 @@ class ProductionLineController(StationOperationDispatcher):
             f"Expected {expected_header}, got {current_header}."
         )
 
-    def _capture_t0_if_needed(self):
-        self.pending_t0 = time.time()
-
-    async def _capture_t4_and_log_pair(self, request_id, run_id):
+    async def _log_timing_pair(
+        self,
+        request_id,
+        run_id,
+        robot_id,
+        t0_unix_us,
+        t5_unix_us,
+    ):
         async with self.log_lock:
-            if self.pending_t0 is None:
-                logging.warning("[%s] No pending t0 available when capturing t4.", self.station_id)
-                return
             if run_id != self.current_run_id:
                 self.current_run_id = run_id
-                self.logged_latency_samples = 0
+                self.logged_timing_samples = 0
 
-            t0 = self.pending_t0
-            self.pending_t0 = None
-            t4 = time.time()
-            sample_index = self.logged_latency_samples + 1
+            sample_index = self.logged_timing_samples + 1
 
             with open(self.log_csv_path, "a", newline="", encoding="utf-8") as csv_file:
                 writer = csv.writer(csv_file)
@@ -592,23 +799,24 @@ class ProductionLineController(StationOperationDispatcher):
                     request_id or "",
                     run_id or "",
                     self.station_id,
+                    robot_id or "",
                     sample_index,
-                    f"{t0:.6f}",
-                    f"{t4:.6f}",
-                    "started",
+                    t0_unix_us,
+                    t5_unix_us,
                 ])
 
-            self.logged_latency_samples = sample_index
+            self.logged_timing_samples = sample_index
             logging.info(
-                "[%s] Logged requestId=%s runId=%s sample %d "
-                "to %s (t0=%.6f, t4=%.6f)",
+                "[%s] Logged requestId=%s runId=%s robotId=%s sample %d "
+                "to %s (t0=%d us, t5=%d us)",
                 self.station_id,
                 request_id,
                 run_id,
-                self.logged_latency_samples,
+                robot_id,
+                self.logged_timing_samples,
                 self.log_csv_path,
-                t0,
-                t4,
+                t0_unix_us,
+                t5_unix_us,
             )
 
     def _read_payload(self, payload_bytes):
@@ -715,11 +923,14 @@ class ProductionLineController(StationOperationDispatcher):
     async def publish_box_detected(self, box_detected):
         if box_detected != self.last_box_state:
             self.box_event_sequence += 1
-            await self.publish_telemetry(
+            published_unix_us = await self.publish_telemetry(
                 asset_id=self.conveyor_asset_id,
                 semantic_id="urn:agent-aas:semantics:WorkpiecePresent:1",
                 value=box_detected,
             )
+            if box_detected:
+                self.pending_t0_unix_us = published_unix_us
+                await self.experiment_timing.record_first_detection(published_unix_us)
             self.last_box_state = box_detected
 
     async def publish_conveyor_speed(self, speed):
@@ -815,7 +1026,7 @@ class ProductionLineController(StationOperationDispatcher):
         await self.mqtt.publish(topic, json_payload, qos=1, retain=False)
 
 
-    async def publish_telemetry(self, asset_id: str, semantic_id: str, value: Any) -> None:
+    async def publish_telemetry(self, asset_id: str, semantic_id: str, value: Any) -> int:
         self.telemetry_event_sequence += 1
         payload = {
             "assetId": asset_id,
@@ -828,12 +1039,14 @@ class ProductionLineController(StationOperationDispatcher):
             ),
         }
 
+        published_unix_us = time.time_ns() // 1_000
         await self.mqtt.publish(
             "oip/telemetry",
             json.dumps(payload),
             qos=1,
             retain=False,
         )
+        return published_unix_us
 
 
     async def stop_conveyor_for_box(self):
@@ -880,8 +1093,6 @@ class ProductionLineController(StationOperationDispatcher):
                     self.pending_box_pick = True
                     self.box_is_present = True
                     self.waiting_for_pickup = True
-
-                    self._capture_t0_if_needed()
 
                     logging.info(
                         "[%s] Confirmed box at distance %.3f; pick token created.",
@@ -1136,7 +1347,8 @@ async def main():
 
     station_ids = [
         station_id.strip()
-        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02").split(",")
+        for station_id in os.getenv("STATION_IDS", "Station_01,Station_02,Station_03,Station_04,Station_05," \
+        "Station_06,Station_07,Station_08,Station_09").split(",")
         if station_id.strip()
     ]
     controllers_by_station = {}
@@ -1168,6 +1380,8 @@ async def main():
                 qos=1,
                 retain=True,
             )
+
+            experiment_timing = ExperimentTiming(target_pickups=240)
             for s_id in station_ids:
                 robot_id = s_id.replace("Station_", "Robot_", 1)
                 controller = ProductionLineController(
@@ -1176,6 +1390,7 @@ async def main():
                     factory_object,
                     mqtt_client,
                 server_instance_id,
+                experiment_timing,
                 robot_id=robot_id,
                 conveyor_id=s_id.replace("Station_", "Conveyor_", 1),
             )
@@ -1206,6 +1421,7 @@ async def main():
             try:
                 await asyncio.gather(*tasks)
             finally:
+                await experiment_timing.record_interrupted()
                 await mqtt_client.publish(
                     server_status_topic,
                     json.dumps({

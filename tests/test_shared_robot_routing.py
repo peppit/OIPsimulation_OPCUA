@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from server import ProductionLineController, mqtt_operation_listener
+from server import ExperimentTiming, ProductionLineController, mqtt_operation_listener
 
 
 class FakeNode:
@@ -74,6 +74,7 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
                 idx_folder=None,
                 mqtt_client=mqtt,
                 server_instance_id="test-server",
+                experiment_timing=ExperimentTiming(),
                 robot_id=robot_id,
             )
         controller.cmd_node = FakeNode()
@@ -93,7 +94,8 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         }
         controller.pending_box_pick = True
         controller.box_is_present = False
-        controller._capture_t4_and_log_pair = AsyncMock()
+        controller.pending_t0_unix_us = 987_654
+        controller._log_timing_pair = AsyncMock()
         return controller
 
     async def route_one(self, topic, payload, station_01, station_02, robots=None):
@@ -123,6 +125,49 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         await station_01.dispatch_operation("moveBox", operation_payload(), station_01)
 
         self.assertIn(True, station_01.gripper_node.writes)
+
+    async def test_any_robot_number_uses_station_01_sequence_for_its_conveyor(self):
+        station_99 = self.make_controller("Station_99", "Robot_99")
+
+        sequences = station_99._build_robot_sequences()
+        route = (
+            "urn:agent-aas:asset-instance:conveyor99",
+            "urn:agent-aas:entity:oip-factory01:pallet99",
+        )
+
+        self.assertEqual(
+            [
+                step["cmd"]
+                for step in sequences["moveBox"][route]
+                if step["action"] == "execute_command"
+            ],
+            [1, 2, 3, 4, 3],
+        )
+
+    async def test_robot_execution_start_captures_t5_in_unix_microseconds(self):
+        station_01 = self.make_controller("Station_01", "Robot_01")
+        station_01.EXECUTE_RESET_SECONDS = 0
+        station_01.done_node.get_value = AsyncMock(
+            side_effect=[True, False, True]
+        )
+        on_execution_started = AsyncMock()
+
+        with patch("server.time.time_ns", return_value=1_234_567_890_123):
+            await station_01._execute_robot_command(
+                1,
+                on_execution_started=on_execution_started,
+            )
+
+        on_execution_started.assert_awaited_once_with(1_234_567_890)
+
+    async def test_box_present_publish_captures_t0_in_unix_microseconds(self):
+        station_01 = self.make_controller("Station_01", "Robot_01")
+        station_01.last_box_state = False
+
+        with patch("server.time.time_ns", return_value=9_876_543_210_123):
+            await station_01.publish_box_detected(True)
+
+        self.assertEqual(station_01.pending_t0_unix_us, 9_876_543_210)
 
     async def test_robot02_executes_station01_request(self):
         station_01 = self.make_controller("Station_01", "Robot_01")
@@ -168,12 +213,17 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         station_01 = self.make_controller("Station_01", "Robot_01")
         station_02 = self.make_controller("Station_02", "Robot_02")
 
+        async def execute(_sequence, on_first_execution_started=None):
+            await on_first_execution_started(1_234_567)
+
+        station_02._execute_robot_sequence = execute
+
         await station_01.dispatch_operation("moveBox", operation_payload(), station_02)
 
         self.assertFalse(station_01.pending_box_pick)
         self.assertTrue(station_02.pending_box_pick)
-        station_01._capture_t4_and_log_pair.assert_awaited_once_with(
-            "request-123", "fault-test-01"
+        station_01._log_timing_pair.assert_awaited_once_with(
+            "request-123", "fault-test-01", "Robot_02", 987_654, 1_234_567
         )
 
     async def test_station01_reply_contains_robot02_identity(self):
@@ -198,7 +248,7 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         active = 0
         max_active = 0
 
-        async def execute(_sequence):
+        async def execute(_sequence, on_first_execution_started=None):
             nonlocal active, max_active
             active += 1
             max_active = max(max_active, active)
