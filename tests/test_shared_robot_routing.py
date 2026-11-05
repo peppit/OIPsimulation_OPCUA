@@ -112,9 +112,14 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         return mqtt
 
     async def dispatch_queued(self, controller):
-        operation, payload, executor = await controller.operation_queue.get()
+        operation, payload, executor, command_received_unix_us = await controller.operation_queue.get()
         try:
-            await controller.handle_operation_message(operation, payload, executor)
+            await controller.handle_operation_message(
+                operation,
+                payload,
+                executor,
+                command_received_unix_us,
+            )
         finally:
             controller.operation_queue.task_done()
         return executor
@@ -122,7 +127,9 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_local_robot_executes_local_station_request(self):
         station_01 = self.make_controller("Station_01", "Robot_01")
 
-        await station_01.dispatch_operation("moveBox", operation_payload(), station_01)
+        await station_01.dispatch_operation(
+            "moveBox", operation_payload(), station_01, 1_234_567
+        )
 
         self.assertIn(True, station_01.gripper_node.writes)
 
@@ -144,21 +151,16 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
             [1, 2, 3, 4, 3],
         )
 
-    async def test_robot_execution_start_captures_t5_in_unix_microseconds(self):
+    async def test_robot_command_waits_for_start_and_completion(self):
         station_01 = self.make_controller("Station_01", "Robot_01")
         station_01.EXECUTE_RESET_SECONDS = 0
         station_01.done_node.get_value = AsyncMock(
             side_effect=[True, False, True]
         )
-        on_execution_started = AsyncMock()
 
-        with patch("server.time.time_ns", return_value=1_234_567_890_123):
-            await station_01._execute_robot_command(
-                1,
-                on_execution_started=on_execution_started,
-            )
+        await station_01._execute_robot_command(1)
 
-        on_execution_started.assert_awaited_once_with(1_234_567_890)
+        self.assertEqual(station_01.done_node.get_value.await_count, 3)
 
     async def test_box_present_publish_captures_t0_in_unix_microseconds(self):
         station_01 = self.make_controller("Station_01", "Robot_01")
@@ -195,7 +197,9 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         station_01 = self.make_controller("Station_01", "Robot_01")
         station_02 = self.make_controller("Station_02", "Robot_02")
 
-        await station_01.dispatch_operation("moveBox", operation_payload(), station_02)
+        await station_01.dispatch_operation(
+            "moveBox", operation_payload(), station_02, 1_234_567
+        )
 
         self.assertEqual(station_02.gripper_node.writes, [True])
         self.assertEqual(station_02.exec_node.writes, [False])
@@ -204,7 +208,9 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         station_01 = self.make_controller("Station_01", "Robot_01")
         station_02 = self.make_controller("Station_02", "Robot_02")
 
-        await station_01.dispatch_operation("moveBox", operation_payload(), station_02)
+        await station_01.dispatch_operation(
+            "moveBox", operation_payload(), station_02, 1_234_567
+        )
 
         self.assertEqual(station_01.gripper_node.writes, [])
         self.assertEqual(station_01.exec_node.writes, [])
@@ -213,12 +219,14 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         station_01 = self.make_controller("Station_01", "Robot_01")
         station_02 = self.make_controller("Station_02", "Robot_02")
 
-        async def execute(_sequence, on_first_execution_started=None):
-            await on_first_execution_started(1_234_567)
+        async def execute(_sequence):
+            pass
 
         station_02._execute_robot_sequence = execute
 
-        await station_01.dispatch_operation("moveBox", operation_payload(), station_02)
+        await station_01.dispatch_operation(
+            "moveBox", operation_payload(), station_02, 1_234_567
+        )
 
         self.assertFalse(station_01.pending_box_pick)
         self.assertTrue(station_02.pending_box_pick)
@@ -231,7 +239,9 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         station_01 = self.make_controller("Station_01", "Robot_01", mqtt)
         station_02 = self.make_controller("Station_02", "Robot_02", mqtt)
 
-        await station_01.dispatch_operation("moveBox", operation_payload(), station_02)
+        await station_01.dispatch_operation(
+            "moveBox", operation_payload(), station_02, 1_234_567
+        )
 
         completed = [
             json.loads(payload)
@@ -248,7 +258,7 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         active = 0
         max_active = 0
 
-        async def execute(_sequence, on_first_execution_started=None):
+        async def execute(_sequence):
             nonlocal active, max_active
             active += 1
             max_active = max(max_active, active)
@@ -257,11 +267,14 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
 
         station_02._execute_robot_sequence = execute
         await asyncio.gather(
-            station_01.dispatch_operation("moveBox", operation_payload("request-1"), station_02),
+            station_01.dispatch_operation(
+                "moveBox", operation_payload("request-1"), station_02, 1_234_567
+            ),
             station_02.dispatch_operation(
                 "moveBox",
                 operation_payload("request-2", station_id="Station_02"),
                 station_02,
+                1_234_567,
             ),
         )
 
@@ -335,7 +348,9 @@ class SharedRobotRoutingTests(unittest.IsolatedAsyncioTestCase):
         station_02 = self.make_controller("Station_02", "Robot_02", mqtt)
         station_02.robot_ready.clear()
 
-        await station_01.dispatch_operation("moveBox", operation_payload(), station_02)
+        await station_01.dispatch_operation(
+            "moveBox", operation_payload(), station_02, 1_234_567
+        )
 
         self.assertTrue(station_01.pending_box_pick)
         self.assertEqual(station_02.gripper_node.writes, [])

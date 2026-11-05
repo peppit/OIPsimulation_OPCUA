@@ -214,13 +214,13 @@ Robot operations using the same executor are serialized by that robot's lock, in
 
 ## OIP timing log
 
-For `moveBox`, `t0` is recorded immediately before the server publishes the `WorkpiecePresent=true` (`Box_present`) telemetry. `t5` is recorded when the server first observes `Done=false`, indicating that robot execution has started. Both timestamps are Unix epoch time in integer microseconds. The server appends one correlated row per accepted `moveBox` request to `OIP_server_logs.csv`:
+For `moveBox`, `t0` is recorded immediately before the server publishes the `WorkpiecePresent=true` (`Box_present`) telemetry. `t5` is recorded when the MQTT operation message is delivered to the server listener. Both timestamps are Unix epoch time in integer microseconds. The server appends one correlated row per accepted `moveBox` request to `OIP_server_logs.csv`:
 
 ```text
 request_id,run_id,station_id,robot_id,sample_in_run,t0_unix_us,t5_unix_us
 ```
 
-The sample counter resets when `runId` changes. Only the first execution start in a `moveBox` sequence is logged. At startup, an existing CSV must have exactly this header; otherwise the server raises an error and asks you to move or rename the old log.
+The sample counter resets when `runId` changes. Each accepted `moveBox` request consumes the pending `t0` and logs one timing pair. At startup, an existing CSV must have exactly this header; otherwise the server raises an error and asks you to move or rename the old log.
 
 ## Tests
 

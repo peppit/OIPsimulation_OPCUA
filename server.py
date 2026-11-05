@@ -18,7 +18,6 @@ logging.getLogger("asyncua.server.standard_address_space").setLevel(logging.WARN
 logging.getLogger("asyncua.server.uaprocessor").setLevel(logging.WARNING)
 
 OperationHandler = Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]
-RobotExecutionStartedCallback = Callable[[int], Awaitable[None]]
 
 class ExperimentTiming:
     RUN_EVENTS_FILE = os.path.join(
@@ -306,7 +305,7 @@ class StationOperationDispatcher:
             ],
         }
 
-    async def dispatch_operation(self, operation_name: str, payload: Any, selected_executor: Optional["ProductionLineController"] = None) -> None:
+    async def dispatch_operation(self, operation_name: str, payload: Any, selected_executor: Optional["ProductionLineController"] = None, command_received_unix_us: int | None = None) -> None:
         operation_name, payload_envelope = self._normalize_operation_message(operation_name, payload)
         request_id = payload_envelope.get("requestId")
         key = operation_name.strip().lower()
@@ -360,6 +359,7 @@ class StationOperationDispatcher:
             return
 
         payload_envelope["_executor"] = executor
+        payload_envelope["command_received_unix_us"] = command_received_unix_us
         await self.publish_operation_status(
             operation_name,
             request_id,
@@ -516,24 +516,37 @@ class StationOperationDispatcher:
             target_position,
         )
 
-
         t0_unix_us = destination.pending_t0_unix_us
         destination.pending_t0_unix_us = None
 
-        async def log_robot_execution_start(t5_unix_us: int) -> None:
+        t5_unix_us = envelope.get("command_received_unix_us")
+        request_id = envelope.get("requestId")
+
+        if (
+            isinstance(t5_unix_us, int)
+            and t0_unix_us is not None
+            and t5_unix_us >= t0_unix_us
+            and request_id
+        ):
             await destination._log_timing_pair(
-                envelope.get("requestId"),
+                request_id,
                 envelope.get("runId"),
                 executor.robot_id,
                 t0_unix_us,
                 t5_unix_us,
             )
+        else:
+            logging.warning(
+                "[%s] Invalid or missing latency timestamps: "
+                "requestId=%s, t0=%s, t5=%s",
+                destination.station_id,
+                request_id,
+                t0_unix_us,
+                t5_unix_us,
+            )
 
         async with executor.robot_lock:
-            await executor._execute_robot_sequence(
-                sequence,
-                on_first_execution_started=log_robot_execution_start,
-            )
+            await executor._execute_robot_sequence(sequence)
         await destination.experiment_timing.record_completed_pickup()
         await destination.restart_conveyor_if_safe()
 
@@ -556,20 +569,14 @@ class StationOperationDispatcher:
     async def _execute_robot_sequence(
         self,
         sequence: List[Dict[str, Any]],
-        on_first_execution_started: Optional[RobotExecutionStartedCallback] = None,
     ) -> None:
-        execution_started_callback = on_first_execution_started
         await self.publish_robot_moving(True)
         try:
             for step in sequence:
                 action = step.get("action")
 
                 if action == "execute_command":
-                    await self._execute_robot_command(
-                        int(step["cmd"]),
-                        on_execution_started=execution_started_callback,
-                    )
-                    execution_started_callback = None
+                    await self._execute_robot_command(int(step["cmd"]))
                     continue
 
                 if action == "set_gripper":
@@ -588,7 +595,6 @@ class StationOperationDispatcher:
     async def _execute_robot_command(
         self,
         command: int,
-        on_execution_started: Optional[RobotExecutionStartedCallback] = None,
     ) -> None:
         # Done is a status output owned by the OIP robot. Wait until the robot
         # reports idle before issuing a new rising edge on Execute.
@@ -611,14 +617,13 @@ class StationOperationDispatcher:
             # OIP writes Done=False when it accepts the command and begins
             # moving. This prevents a stale Done=True value from being treated
             # as immediate command completion.
-            t5_unix_us = await self._wait_for_robot_done(
+            await self._wait_for_robot_done(
                 expected=False,
                 timeout=self.ROBOT_START_TIMEOUT_SECONDS,
                 phase="start",
                 command=command,
             )
-            if on_execution_started is not None:
-                await on_execution_started(t5_unix_us)
+
         finally:
             await self.exec_node.write_value(False)
 
@@ -635,14 +640,13 @@ class StationOperationDispatcher:
         timeout: float,
         phase: str,
         command: int,
-    ) -> int:
+    ) -> None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
 
         while True:
             done = bool(await self.done_node.get_value())
             if done == expected:
-                observed_unix_us = time.time_ns() // 1_000
                 logging.info(
                     "[%s] Robot command=%s phase=%s Done=%s",
                     self.station_id,
@@ -650,7 +654,7 @@ class StationOperationDispatcher:
                     phase,
                     done,
                 )
-                return observed_unix_us
+                return
 
             remaining = deadline - loop.time()
             if remaining <= 0:
@@ -847,19 +851,20 @@ class ProductionLineController(StationOperationDispatcher):
         except (TypeError, ValueError):
             return None
 
-    async def handle_operation_message(self, operation_name, payload_bytes, selected_executor=None):
+    async def handle_operation_message(self, operation_name, payload_bytes, selected_executor=None, command_received_unix_us: int | None = None):
         payload = self._read_payload(payload_bytes)
-        await self.dispatch_operation(operation_name, payload, selected_executor)
+        await self.dispatch_operation(operation_name, payload, selected_executor, command_received_unix_us)
 
     async def run_operation_worker(self):
         while True:
             queued_operation = await self.operation_queue.get()
             try:
-                operation_name, payload_bytes, *executor = queued_operation
+                operation_name, payload_bytes, executor, command_received_unix_us = queued_operation
                 await self.handle_operation_message(
                     operation_name,
                     payload_bytes,
-                    executor[0] if executor else None,
+                    executor,
+                    command_received_unix_us,
                 )
             except Exception:
                 logging.exception("[%s] Queued operation failed to dispatch %s", self.station_id, operation_name)
@@ -1232,6 +1237,7 @@ async def mqtt_operation_listener(
                 logging.exception("Station operation task failed")
 
         async for message in messages:
+            command_received_unix_us = time.time_ns() // 1000
             logging.info("MQTT RX topic=%s payload=%s", message.topic, message.payload)
             topic_parts = str(message.topic).split("/")
             route_type, route_id, operation_name = _resolve_target(topic_parts)
@@ -1246,7 +1252,7 @@ async def mqtt_operation_listener(
                 if controller is None:
                     logging.warning("MQTT operation received for unknown station: %s", route_id)
                     continue
-                await controller.operation_queue.put((operation_name, message.payload, controller))
+                await controller.operation_queue.put((operation_name, message.payload, controller, command_received_unix_us))
                 continue
 
             envelope = _payload_envelope(message.payload)
@@ -1311,7 +1317,7 @@ async def mqtt_operation_listener(
                     )
                     continue
 
-            await destination.operation_queue.put((operation_name, message.payload, executor))
+            await destination.operation_queue.put((operation_name, message.payload, executor, command_received_unix_us))
             
     messages_source = mqtt_client.messages
     if callable(messages_source):
