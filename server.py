@@ -101,11 +101,8 @@ class ExperimentTiming:
                     writer.writerow([
                         "run_id",
                         "measurement_start_unix_us",
-                        "measurement_start_utc",
                         "measurement_end_unix_us",
-                        "measurement_end_utc",
                         "server_shutdown_unix_us",
-                        "server_shutdown_utc",
                         "completed_pickups",
                         "target_pickups",
                         "status",
@@ -113,16 +110,13 @@ class ExperimentTiming:
                 writer.writerow([
                     self.run_id,
                     self.first_detection_unix_us,
-                    self._utc_iso(self.first_detection_unix_us),
-                    measurement_end_unix_us or "",
                     (
-                        self._utc_iso(measurement_end_unix_us)
+                        measurement_end_unix_us
                         if measurement_end_unix_us is not None
                         else ""
                     ),
-                    shutdown_unix_us or "",
                     (
-                        self._utc_iso(shutdown_unix_us)
+                        shutdown_unix_us
                         if shutdown_unix_us is not None
                         else ""
                     ),
